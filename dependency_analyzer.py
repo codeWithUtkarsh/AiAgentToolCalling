@@ -15,10 +15,10 @@ from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 from dotenv import load_dotenv
 
-from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langchain_anthropic import ChatAnthropic
+from langgraph.prebuilt import create_react_agent
 
 # Load environment variables from .env file
 load_dotenv()
@@ -375,8 +375,7 @@ def create_dependency_analyzer_agent():
         cleanup_repository
     ]
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", """You are a dependency analysis specialist. Your task is to analyze a repository and identify outdated dependencies.
+    system_message = """You are a dependency analysis specialist. Your task is to analyze a repository and identify outdated dependencies.
 
 Your Process:
 
@@ -407,24 +406,14 @@ Outdated Dependencies:
 
 Total outdated: [count]
 
-Be thorough and accurate in your analysis. If you cannot determine the package manager or find dependency files, clearly state this in your report."""),
-        ("human", "{input}"),
-        ("placeholder", "{agent_scratchpad}"),
-    ])
+Be thorough and accurate in your analysis. If you cannot determine the package manager or find dependency files, clearly state this in your report."""
 
     llm = ChatAnthropic(
         model="claude-3-5-sonnet-20241022",
         temperature=0
     )
 
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    agent_executor = AgentExecutor(
-        agent=agent,
-        tools=tools,
-        verbose=True,
-        max_iterations=15,
-        handle_parsing_errors=True
-    )
+    agent_executor = create_react_agent(llm, tools, messages_modifier=system_message)
 
     return agent_executor
 
@@ -449,13 +438,14 @@ def main():
 
     try:
         result = agent_executor.invoke({
-            "input": f"Analyze this repository for outdated dependencies: {repo_url}"
+            "messages": [("user", f"Analyze this repository for outdated dependencies: {repo_url}")]
         })
 
         print("\n" + "="*80)
         print("DEPENDENCY ANALYSIS REPORT")
         print("="*80)
-        print(result["output"])
+        final_message = result["messages"][-1]
+        print(final_message.content)
 
     except Exception as e:
         print(f"Error: {str(e)}")

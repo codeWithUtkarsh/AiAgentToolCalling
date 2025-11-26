@@ -15,10 +15,10 @@ import tempfile
 import shutil
 from dotenv import load_dotenv
 
-from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langchain_anthropic import ChatAnthropic
+from langgraph.prebuilt import create_react_agent
 
 # Load environment variables from .env file
 load_dotenv()
@@ -275,7 +275,7 @@ def cleanup_repository(repo_path: str) -> str:
 
 def create_outdated_finder_agent():
     """
-    Create a LangChain agent with tools for finding outdated dependencies.
+    Create a LangGraph agent with tools for finding outdated dependencies.
     """
     # Define the tools
     tools = [
@@ -287,9 +287,14 @@ def create_outdated_finder_agent():
         cleanup_repository
     ]
 
-    # Create the prompt template
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", """You are a helpful assistant that analyzes repositories for outdated dependencies.
+    # Initialize the LLM with tool calling support
+    llm = ChatAnthropic(
+        model="claude-3-5-sonnet-20241022",
+        temperature=0
+    )
+
+    # System message for the agent
+    system_message = """You are a helpful assistant that analyzes repositories for outdated dependencies.
 
 When given a repository URL, you should:
 1. Clone the repository
@@ -298,29 +303,10 @@ When given a repository URL, you should:
 4. Provide a summary of findings
 5. Clean up the cloned repository
 
-Be thorough and check all detected package managers."""),
-        ("human", "{input}"),
-        ("placeholder", "{agent_scratchpad}"),
-    ])
+Be thorough and check all detected package managers."""
 
-    # Initialize the LLM with tool calling support
-    # You can use ChatAnthropic or ChatOpenAI
-    llm = ChatAnthropic(
-        model="claude-3-5-sonnet-20241022",
-        temperature=0
-    )
-
-    # Create the agent
-    agent = create_tool_calling_agent(llm, tools, prompt)
-
-    # Create the agent executor
-    agent_executor = AgentExecutor(
-        agent=agent,
-        tools=tools,
-        verbose=True,
-        max_iterations=10,
-        handle_parsing_errors=True
-    )
+    # Create the react agent using langgraph
+    agent_executor = create_react_agent(llm, tools, messages_modifier=system_message)
 
     return agent_executor
 
@@ -347,13 +333,15 @@ def main():
     # Run the agent
     try:
         result = agent_executor.invoke({
-            "input": f"Analyze this repository for outdated dependencies: {repo_url}"
+            "messages": [("user", f"Analyze this repository for outdated dependencies: {repo_url}")]
         })
 
         print("\n" + "="*80)
         print("FINAL REPORT")
         print("="*80)
-        print(result["output"])
+        # Extract the final AI message from the result
+        final_message = result["messages"][-1]
+        print(final_message.content)
 
     except Exception as e:
         print(f"Error: {str(e)}")

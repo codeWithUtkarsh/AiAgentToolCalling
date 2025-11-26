@@ -13,10 +13,10 @@ from typing import Dict, List, Optional
 from pathlib import Path
 from dotenv import load_dotenv
 
-from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langchain_anthropic import ChatAnthropic
+from langgraph.prebuilt import create_react_agent
 
 # Load environment variables from .env file
 load_dotenv()
@@ -378,8 +378,7 @@ def create_dependency_updater_agent():
         generate_pr_description
     ]
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", """You are a dependency update specialist. Your task is to update dependency files with new versions and determine the appropriate testing strategy.
+    system_message = """You are a dependency update specialist. Your task is to update dependency files with new versions and determine the appropriate testing strategy.
 
 Your Process:
 
@@ -417,24 +416,14 @@ Summary:
 - Updated [count] dependencies
 - Files modified: [list]
 
-Be precise with file contents and ensure all syntax is correct for the package manager being used."""),
-        ("human", "{input}"),
-        ("placeholder", "{agent_scratchpad}"),
-    ])
+Be precise with file contents and ensure all syntax is correct for the package manager being used."""
 
     llm = ChatAnthropic(
         model="claude-3-5-sonnet-20241022",
         temperature=0
     )
 
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    agent_executor = AgentExecutor(
-        agent=agent,
-        tools=tools,
-        verbose=True,
-        max_iterations=15,
-        handle_parsing_errors=True
-    )
+    agent_executor = create_react_agent(llm, tools, messages_modifier=system_message)
 
     return agent_executor
 

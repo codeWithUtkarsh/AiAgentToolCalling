@@ -13,10 +13,10 @@ import subprocess
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
 
-from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langchain_anthropic import ChatAnthropic
+from langgraph.prebuilt import create_react_agent
 
 # Load environment variables from .env file
 load_dotenv()
@@ -43,12 +43,13 @@ def run_dependency_analyzer(repo_url: str) -> str:
         analyzer_agent = create_dependency_analyzer_agent()
 
         result = analyzer_agent.invoke({
-            "input": f"Analyze this repository for outdated dependencies: {repo_url}. Return results in a structured JSON format."
+            "messages": [("user", f"Analyze this repository for outdated dependencies: {repo_url}. Return results in a structured JSON format.")]
         })
 
+        final_message = result["messages"][-1]
         return json.dumps({
             "status": "success",
-            "analysis": result["output"]
+            "analysis": final_message.content
         })
 
     except Exception as e:
@@ -77,12 +78,13 @@ def run_dependency_updater(package_manager: str, dependency_file: str, updates: 
         updater_agent = create_dependency_updater_agent()
 
         result = updater_agent.invoke({
-            "input": f"Update {dependency_file} for {package_manager} with these changes: {updates}. Provide updated file content and testing strategy."
+            "messages": [("user", f"Update {dependency_file} for {package_manager} with these changes: {updates}. Provide updated file content and testing strategy.")]
         })
 
+        final_message = result["messages"][-1]
         return json.dumps({
             "status": "success",
-            "updates": result["output"]
+            "updates": final_message.content
         })
 
     except Exception as e:
@@ -274,8 +276,7 @@ def create_main_orchestrator_agent():
         format_testing_commands
     ]
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", """You are a dependency update automation agent. Your goal is to check repositories for outdated dependencies, update them to their latest versions, verify the updates don't cause breaking changes, and create pull requests with the changes.
+    system_message = """You are a dependency update automation agent. Your goal is to check repositories for outdated dependencies, update them to their latest versions, verify the updates don't cause breaking changes, and create pull requests with the changes.
 
 Your Workflow:
 
@@ -323,24 +324,14 @@ Error Handling:
 - If no dependency files are found, clearly state this
 - If you cannot determine the package manager, ask for clarification
 - If the repository doesn't exist or is inaccessible, inform the user
-- If no outdated dependencies are found, congratulate them"""),
-        ("human", "{input}"),
-        ("placeholder", "{agent_scratchpad}"),
-    ])
+- If no outdated dependencies are found, congratulate them"""
 
     llm = ChatAnthropic(
         model="claude-3-5-sonnet-20241022",
         temperature=0
     )
 
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    agent_executor = AgentExecutor(
-        agent=agent,
-        tools=tools,
-        verbose=True,
-        max_iterations=20,
-        handle_parsing_errors=True
-    )
+    agent_executor = create_react_agent(llm, tools, messages_modifier=system_message)
 
     return agent_executor
 
@@ -379,13 +370,14 @@ def main():
 
     try:
         result = agent.invoke({
-            "input": f"Analyze and prepare dependency updates for repository: {repo_url} ({repo_name})"
+            "messages": [("user", f"Analyze and prepare dependency updates for repository: {repo_url} ({repo_name})")]
         })
 
         print("\n" + "="*80)
         print("✅ FINAL REPORT")
         print("="*80)
-        print(result["output"])
+        final_message = result["messages"][-1]
+        print(final_message.content)
         print("\n")
 
     except Exception as e:
