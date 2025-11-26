@@ -306,7 +306,7 @@ When given a repository URL, you should:
 Be thorough and check all detected package managers."""
 
     # Create the react agent using langgraph
-    agent_executor = create_react_agent(llm, tools, state_modifier=system_message)
+    agent_executor = create_react_agent(llm, tools, prompt=system_message)
 
     return agent_executor
 

@@ -423,7 +423,7 @@ Be precise with file contents and ensure all syntax is correct for the package m
         temperature=0
     )
 
-    agent_executor = create_react_agent(llm, tools, state_modifier=system_message)
+    agent_executor = create_react_agent(llm, tools, prompt=system_message)
 
     return agent_executor
 
