@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langchain_anthropic import ChatAnthropic
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 
 # Load environment variables from .env file
 load_dotenv()
@@ -413,7 +413,7 @@ Be thorough and accurate in your analysis. If you cannot determine the package m
         temperature=0
     )
 
-    agent_executor = create_react_agent(llm, tools, prompt=system_message)
+    agent_executor = create_agent(llm, tools, system_prompt=system_message)
 
     return agent_executor
 
