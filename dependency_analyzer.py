@@ -13,11 +13,15 @@ import tempfile
 import shutil
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
+from dotenv import load_dotenv
 
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langchain_anthropic import ChatAnthropic
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 @tool

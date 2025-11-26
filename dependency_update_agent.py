@@ -11,11 +11,15 @@ import sys
 import json
 import subprocess
 from typing import Dict, List, Optional
+from dotenv import load_dotenv
 
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langchain_anthropic import ChatAnthropic
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Import sub-agents
 from dependency_analyzer import create_dependency_analyzer_agent
