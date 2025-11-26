@@ -24,6 +24,7 @@ from langchain.agents import create_agent
 from dependency_analyzer import create_dependency_analyzer_agent
 from smart_dependency_updater import create_smart_updater_agent
 from dependency_operations import categorize_updates
+from setup_github_mcp import ensure_github_mcp_server
 
 # Load environment variables
 load_dotenv()
@@ -213,10 +214,12 @@ What it does:
   6. 🔴 Creates Issue if updates can't be applied safely
 
 Prerequisites:
-  - GitHub MCP server installed at /usr/local/bin/github-mcp-server
+  - Go installed (for automatic GitHub MCP server setup)
   - GITHUB_PERSONAL_ACCESS_TOKEN environment variable set
   - Git configured with push access to the repository
   - Package manager tools installed (npm, pip, cargo, etc.)
+
+Note: GitHub MCP server will be automatically installed if not found!
 
 Setup GitHub Access:
   1. Create token at: https://github.com/settings/tokens
@@ -252,25 +255,14 @@ Setup GitHub Access:
     # Check prerequisites
     print("🔍 Checking prerequisites...")
 
-    # Check for GitHub MCP server binary
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["/usr/local/bin/github-mcp-server", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        if result.returncode == 0:
-            print("  ✅ GitHub MCP server found")
-        else:
-            print("  ❌ GitHub MCP server not working properly")
-            print("     Install: https://github.com/github/github-mcp-server")
-            sys.exit(1)
-    except FileNotFoundError:
-        print("  ❌ GitHub MCP server not found at /usr/local/bin/github-mcp-server")
-        print("     Install: https://github.com/github/github-mcp-server")
+    # Check for GitHub MCP server binary (auto-install if missing)
+    print("  📦 Checking GitHub MCP server...")
+    if not ensure_github_mcp_server():
+        print()
+        print("  ❌ Failed to set up GitHub MCP server")
+        print("     Manual install: https://github.com/github/github-mcp-server")
         sys.exit(1)
+    print("  ✅ GitHub MCP server ready")
 
     # Check for GitHub Personal Access Token
     github_token = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")

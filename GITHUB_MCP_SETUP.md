@@ -2,6 +2,26 @@
 
 This document explains how to set up and use the GitHub MCP (Model Context Protocol) integration in the Automated Dependency Update System.
 
+## 🚀 Automatic Installation (New!)
+
+**The GitHub MCP server is now automatically installed when you run the application!**
+
+When you start `auto_update_dependencies.py`, it will:
+1. Check if GitHub MCP server is already installed
+2. If not found, automatically clone and build it from source
+3. Install it to `/usr/local/bin/github-mcp-server`
+4. Continue with the dependency update process
+
+**Requirements for automatic installation:**
+- Go must be installed on your system ([Install Go](https://go.dev/doc/install))
+- Internet connection to clone the GitHub MCP server repository
+- Sudo access (if `/usr/local/bin` requires elevated permissions)
+
+You can also run the installer standalone:
+```bash
+python setup_github_mcp.py
+```
+
 ## What is GitHub MCP?
 
 GitHub MCP is a Model Context Protocol server that provides programmatic access to GitHub's API through a standardized interface. This integration replaces the need for the GitHub CLI (`gh`) and provides more robust, programmatic access to GitHub operations.
@@ -18,9 +38,20 @@ GitHub MCP is a Model Context Protocol server that provides programmatic access 
 
 ### 1. GitHub MCP Server Binary
 
-The GitHub MCP server must be installed at `/usr/local/bin/github-mcp-server`.
+**Automatic Installation (Recommended):**
 
-**Build from source:**
+The GitHub MCP server will be automatically installed when you run the application. Just make sure you have Go installed:
+
+```bash
+# Check if Go is installed
+go version
+
+# If not installed, visit: https://go.dev/doc/install
+```
+
+**Manual Installation (Optional):**
+
+If you prefer to install manually or the automatic installation fails:
 
 ```bash
 # Clone the repository
@@ -29,7 +60,11 @@ git clone https://github.com/github/github-mcp-server.git
 
 # Build the binary
 cd github-mcp-server
-go build -o /usr/local/bin/github-mcp-server ./cmd/github-mcp-server
+go build -o github-mcp-server ./cmd/github-mcp-server
+
+# Install (may require sudo)
+sudo cp github-mcp-server /usr/local/bin/github-mcp-server
+sudo chmod +x /usr/local/bin/github-mcp-server
 
 # Verify installation
 /usr/local/bin/github-mcp-server --version
