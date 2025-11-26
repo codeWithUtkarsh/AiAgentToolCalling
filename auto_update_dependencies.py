@@ -24,7 +24,6 @@ from langchain.agents import create_agent
 from dependency_analyzer import create_dependency_analyzer_agent
 from smart_dependency_updater import create_smart_updater_agent
 from dependency_operations import categorize_updates
-from setup_github_mcp import ensure_github_mcp_server
 
 # Load environment variables
 load_dotenv()
@@ -255,14 +254,19 @@ Setup GitHub Access:
     # Check prerequisites
     print("🔍 Checking prerequisites...")
 
-    # Check for GitHub MCP server binary (auto-install if missing)
-    print("  📦 Checking GitHub MCP server...")
-    if not ensure_github_mcp_server():
+    # Check for Docker (GitHub MCP runs in Docker)
+    print("  🐳 Checking Docker...")
+    docker_check = subprocess.run(
+        ["docker", "--version"],
+        capture_output=True,
+        text=True
+    )
+    if docker_check.returncode != 0:
         print()
-        print("  ❌ Failed to set up GitHub MCP server")
-        print("     Manual install: https://github.com/github/github-mcp-server")
+        print("  ❌ Docker not found")
+        print("     Install Docker: https://docs.docker.com/get-docker/")
         sys.exit(1)
-    print("  ✅ GitHub MCP server ready")
+    print("  ✅ Docker is available")
 
     # Check for GitHub Personal Access Token
     github_token = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")

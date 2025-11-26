@@ -37,19 +37,14 @@ This project implements a multi-agent system following the [LangChain Tool Calli
 ### Agent Hierarchy
 
 ```
-auto_update_dependencies.py (Main Orchestrator) 🆕
+auto_update_dependencies.py (Main Orchestrator)
 ├── dependency_analyzer.py (Analysis Agent)
 │   └── Tools: clone, detect, check outdated
-├── smart_dependency_updater.py (Smart Update Agent) 🆕
+├── smart_dependency_updater.py (Smart Update Agent)
 │   ├── Tools: detect build, test, write files, git ops
 │   └── Sub-tools: apply updates, rollback, parse errors
-└── dependency_operations.py (Helper Tools) 🆕
+└── dependency_operations.py (Helper Tools)
     └── Tools: categorize, version lookup, error analysis
-
-Legacy Mode:
-dependency_update_agent.py (Orchestrator)
-├── dependency_analyzer.py (Worker Agent)
-└── dependency_updater.py (Worker Agent)
 ```
 
 ### Complete Workflow Diagram
@@ -126,23 +121,22 @@ dependency_update_agent.py (Orchestrator)
                            └──────────────────────────┘
 ```
 
-### 1. **Dependency Update Agent** (Orchestrator)
+### 1. **Auto Update Orchestrator** (Main Entry Point)
 
-Main coordinator that manages the overall workflow:
+Main coordinator (`auto_update_dependencies.py`) that manages the complete workflow:
 - Receives repository URL or name
-- Delegates analysis to the analyzer agent
-- Delegates updates to the updater agent
-- Generates final PR descriptions and reports
+- Checks prerequisites (Docker, GitHub token)
+- Orchestrates analysis and update agents
+- Manages end-to-end automated updates with PR/Issue creation
 
-**Tools:**
-- `run_dependency_analyzer` - Invokes the analyzer sub-agent
-- `run_dependency_updater` - Invokes the updater sub-agent
-- `create_github_pr_description` - Formats PR descriptions
-- `format_testing_commands` - Generates testing instructions
+**Functions:**
+- `analyze_repository()` - Invokes the analyzer agent
+- `smart_update_and_test()` - Invokes the smart updater agent
+- Docker and GitHub token validation
 
-### 2. **Dependency Analyzer Agent** (Worker)
+### 2. **Dependency Analyzer Agent** (Analysis)
 
-Specialized in finding outdated dependencies:
+Specialized in finding outdated dependencies (`dependency_analyzer.py`):
 - Clones repositories
 - Detects package managers
 - Identifies outdated packages
@@ -153,24 +147,41 @@ Specialized in finding outdated dependencies:
 - `detect_package_manager` - Identifies package managers and config files
 - `read_dependency_file` - Reads dependency configuration files
 - `check_npm_outdated` - Checks outdated npm packages
-- `check_pip_outdated` - Checks outdated Python packages
+- `check_pip_outdated` - Checks outdated Python packages (via PyPI API)
 - `cleanup_repository` - Removes temporary files
 
-### 3. **Dependency Updater Agent** (Worker)
+### 3. **Smart Dependency Updater Agent** (Update & Test)
 
-Specialized in updating dependency files:
-- Reads current dependency files
-- Updates version numbers
-- Preserves file formatting
-- Determines testing strategies
-- Generates PR descriptions
+Specialized in updating with intelligent testing and rollback (`smart_dependency_updater.py`):
+- Applies dependency updates
+- Runs build and test commands
+- Automatically rolls back breaking changes
+- Creates GitHub PRs on success
+- Creates GitHub Issues on failure
 
 **Tools:**
-- `read_file_content` - Reads file contents
-- `update_package_json` - Updates npm package.json files
-- `update_requirements_txt` - Updates Python requirements.txt files
-- `determine_testing_strategy` - Identifies appropriate test commands
-- `generate_pr_description` - Creates detailed PR descriptions
+- `detect_build_command` - Auto-detects build/test commands
+- `apply_updates` - Updates dependency files
+- `test_updates` - Runs build/test commands
+- `rollback_major_update` - Rolls back problematic updates
+- `create_github_pr` - Creates PRs using MCP
+- `create_github_issue` - Creates issues using MCP
+- `parse_error_for_dependency` - AI-powered error analysis
+
+### 4. **Dependency Operations** (Helper Module)
+
+Utility functions for dependency manipulation (`dependency_operations.py`):
+- Applies updates to various dependency file formats
+- Rolls back specific package updates
+- Categorizes updates (major/minor/patch)
+- Finds latest versions within major releases
+
+**Functions:**
+- `apply_all_updates()` - Applies all updates to dependency files
+- `rollback_major_update()` - Rolls back specific package versions
+- `parse_error_for_dependency()` - AI analysis of build errors
+- `categorize_updates()` - Categorizes updates by type
+- `get_latest_version_for_major()` - Finds latest version in major release
 
 ## 📦 Installation
 
@@ -235,43 +246,10 @@ python auto_update_dependencies.py expressjs/express
 6. 🔴 Creates an Issue if updates can't be applied safely
 
 **Prerequisites:**
-- GitHub CLI installed and authenticated: `gh auth login`
+- Docker installed and running: `docker --version`
+- GitHub Personal Access Token set: `export GITHUB_PERSONAL_ACCESS_TOKEN='your_token'`
 - Git push access to the repository
 - Package manager tools installed (npm, pip, cargo, etc.)
-
-### Manual Analysis Only
-
-Run the main orchestrator which only analyzes (no automatic PR):
-
-```bash
-python dependency_update_agent.py <repository>
-```
-
-**Examples:**
-
-```bash
-# Using full URL
-python dependency_update_agent.py https://github.com/expressjs/express
-
-# Using owner/repo format
-python dependency_update_agent.py expressjs/express
-```
-
-### Individual Agent Usage
-
-You can also run sub-agents independently for specific tasks:
-
-#### Dependency Analyzer Only
-
-```bash
-python dependency_analyzer.py https://github.com/owner/repo
-```
-
-#### Dependency Updater Only
-
-```bash
-python dependency_updater.py npm '[{"name":"express","current":"4.17.1","latest":"4.18.2"}]'
-```
 
 ## 📊 Sample Workflows
 
@@ -494,25 +472,27 @@ def check_yourpm_outdated(repo_path: str) -> str:
     pass
 ```
 
-2. **Update `dependency_updater.py`:**
+2. **Update `dependency_operations.py`:**
 
 Add update logic:
 ```python
-@tool
-def update_yourpm_file(current_content: str, updates: str) -> str:
+def apply_yourpm_updates(file_path: str, updates: list) -> bool:
     """Update your package manager config file."""
     # Implementation here
     pass
 ```
 
-Add testing strategy:
+3. **Update `smart_dependency_updater.py`:**
+
+Add testing strategy in `detect_build_command` tool:
 ```python
-# In determine_testing_strategy tool
-strategies["your-pm"] = {
-    "install": "your-pm install",
-    "build": "your-pm build",
-    "test": "your-pm test"
-}
+# Add detection for your package manager
+if package_manager == "your-pm":
+    return {
+        "install": "your-pm install",
+        "build": "your-pm build",
+        "test": "your-pm test"
+    }
 ```
 
 ## 🔍 Agent Communication Flow
@@ -520,29 +500,34 @@ strategies["your-pm"] = {
 ```
 User Input (repo URL)
     ↓
-Orchestrator Agent
+Auto Update Orchestrator (auto_update_dependencies.py)
+    ↓
+    ├─ Check Prerequisites (Docker, GitHub Token)
     ↓
     ├─→ Dependency Analyzer Agent
     │   ├─→ clone_repository
     │   ├─→ detect_package_manager
-    │   ├─→ check_npm_outdated
+    │   ├─→ check_npm_outdated / check_pip_outdated
     │   └─→ cleanup_repository
     │   ↓
-    │   Returns: Analysis Report
+    │   Returns: Analysis Report (outdated packages)
     ↓
-Orchestrator receives analysis
-    ↓
-    ├─→ Dependency Updater Agent
-    │   ├─→ read_file_content
-    │   ├─→ update_package_json
-    │   ├─→ determine_testing_strategy
-    │   └─→ generate_pr_description
+    ├─→ Smart Dependency Updater Agent
+    │   ├─→ detect_build_command (auto-detect test commands)
+    │   ├─→ apply_updates (update dependency files)
+    │   ├─→ test_updates (run build/test)
+    │   ├─ If tests fail:
+    │   │   ├─→ parse_error_for_dependency (AI error analysis)
+    │   │   ├─→ rollback_major_update (rollback problematic package)
+    │   │   └─→ test_updates (retry, max 3 attempts)
+    │   ├─ If tests pass:
+    │   │   └─→ create_github_pr (via Docker MCP)
+    │   ├─ If tests still fail after rollbacks:
+    │   │   └─→ create_github_issue (via Docker MCP)
     │   ↓
-    │   Returns: Updated Files + Testing Strategy
+    │   Returns: PR URL or Issue URL
     ↓
-Orchestrator generates final PR description
-    ↓
-Returns to User: Complete Update Report
+Returns to User: Success (PR created) or Failure (Issue created)
 ```
 
 ## 🔧 Using Different LLM Providers
@@ -566,23 +551,24 @@ export OPENAI_API_KEY='your-api-key-here'
 - Large repositories may take time to clone and analyze
 - Some checks require the package manager to be installed locally
 - Network connectivity required for cloning and checking updates
-- The agents generate PR descriptions but don't create actual GitHub PRs (you need to do that manually)
+- Requires Docker for GitHub MCP integration
+- Automatically creates PRs on success and Issues when updates fail
 
 ## 📝 Example Scenarios
 
-### Scenario 1: Check a Node.js Project
+### Scenario 1: Update a Node.js Project
 
 ```bash
-python dependency_update_agent.py facebook/react
+python auto_update_dependencies.py facebook/react
 ```
 
-### Scenario 2: Check a Python Project
+### Scenario 2: Update a Python Project
 
 ```bash
-python dependency_update_agent.py https://github.com/pallets/flask
+python auto_update_dependencies.py https://github.com/pallets/flask
 ```
 
-### Scenario 3: Analyze Only (No Updates)
+### Scenario 3: Analyze and Update with Auto-Rollback
 
 ```bash
 python dependency_analyzer.py https://github.com/rust-lang/cargo

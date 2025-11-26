@@ -10,7 +10,7 @@ import os
 import json
 import subprocess
 import threading
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -41,7 +41,7 @@ def _get_event_loop():
 
 
 class GitHubMCPClient:
-    """Client for interacting with GitHub via MCP server."""
+    """Client for interacting with GitHub via MCP server running inside Docker."""
 
     def __init__(self, github_token: Optional[str] = None):
         """
@@ -57,36 +57,66 @@ class GitHubMCPClient:
                 "environment variable or pass token to constructor."
             )
 
+        # Updated: Use Docker to run the GitHub MCP Server
         self.server_params = StdioServerParameters(
-            command="/usr/local/bin/github-mcp-server",
-            args=["stdio"],
+            command="docker",
+            args=[
+                "run",
+                "-i",
+                "--rm",
+                "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",  # Pass through env var
+                "ghcr.io/github/github-mcp-server"
+            ],
             env={
                 "GITHUB_PERSONAL_ACCESS_TOKEN": self.github_token
             }
         )
+
         self.session: Optional[ClientSession] = None
+        self.stdio_context = None
+        self.stdio = None
+        self.write = None
 
     async def __aenter__(self):
         """Async context manager entry."""
-        # Start MCP server connection
-        self.stdio_transport = await stdio_client(self.server_params).__aenter__()
-        self.stdio, self.write = self.stdio_transport
+        try:
+            self.stdio_context = stdio_client(self.server_params)
+            transport = await self.stdio_context.__aenter__()
+            self.stdio, self.write = transport
 
-        # Initialize session
-        self.session = ClientSession(self.stdio, self.write)
-        await self.session.__aenter__()
+            self.session = ClientSession(self.stdio, self.write)
+            await self.session.__aenter__()
+            await self.session.initialize()
 
-        # Initialize the session
-        await self.session.initialize()
+            return self
 
-        return self
+        except Exception as e:
+            await self._cleanup()
+            raise RuntimeError(f"Failed to initialize GitHub MCP client: {str(e)}")
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
+        await self._cleanup()
+        return False
+
+    async def _cleanup(self):
+        """Clean up resources."""
         if self.session:
-            await self.session.__aexit__(exc_type, exc_val, exc_tb)
-        if hasattr(self, 'stdio_transport'):
-            await self.stdio_transport.__aexit__(exc_type, exc_val, exc_tb)
+            try:
+                await self.session.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self.session = None
+
+        if self.stdio_context:
+            try:
+                await self.stdio_context.__aexit__(None, None, None)
+            except Exception:
+                pass
+            self.stdio_context = None
+
+        self.stdio = None
+        self.write = None
 
     async def list_available_tools(self) -> list:
         """
@@ -109,7 +139,7 @@ class GitHubMCPClient:
         body: str,
         head: str,
         base: str = "main"
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """
         Create a GitHub Pull Request using MCP.
 
@@ -140,28 +170,29 @@ class GitHubMCPClient:
                 }
             )
 
-            # Parse the result
             if result.content and len(result.content) > 0:
-                response = result.content[0].text
-                pr_data = json.loads(response) if isinstance(response, str) else response
+                response_text = (
+                    result.content[0].text if hasattr(result.content[0], 'text')
+                    else str(result.content[0])
+                )
+
+                try:
+                    pr_data = json.loads(response_text)
+                except json.JSONDecodeError:
+                    return {"status": "success", "message": response_text, "raw_response": response_text}
 
                 return {
                     "status": "success",
                     "pr_url": pr_data.get("html_url", ""),
                     "pr_number": pr_data.get("number", ""),
-                    "message": f"Successfully created PR #{pr_data.get('number', '')}"
-                }
-            else:
-                return {
-                    "status": "error",
-                    "message": "No response from MCP server"
+                    "message": f"Successfully created PR #{pr_data.get('number', '')}",
+                    "data": pr_data
                 }
 
+            return {"status": "error", "message": "No response from MCP server"}
+
         except Exception as e:
-            return {
-                "status": "error",
-                "message": f"Error creating PR via MCP: {str(e)}"
-            }
+            return {"status": "error", "message": f"Error creating PR via MCP: {str(e)}"}
 
     async def create_issue(
         self,
@@ -170,7 +201,7 @@ class GitHubMCPClient:
         title: str,
         body: str,
         labels: Optional[list] = None
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """
         Create a GitHub Issue using MCP.
 
@@ -202,30 +233,31 @@ class GitHubMCPClient:
                 }
             )
 
-            # Parse the result
             if result.content and len(result.content) > 0:
-                response = result.content[0].text
-                issue_data = json.loads(response) if isinstance(response, str) else response
+                response_text = (
+                    result.content[0].text if hasattr(result.content[0], 'text')
+                    else str(result.content[0])
+                )
+
+                try:
+                    issue_data = json.loads(response_text)
+                except json.JSONDecodeError:
+                    return {"status": "success", "message": response_text, "raw_response": response_text}
 
                 return {
                     "status": "success",
                     "issue_url": issue_data.get("html_url", ""),
                     "issue_number": issue_data.get("number", ""),
-                    "message": f"Successfully created issue #{issue_data.get('number', '')}"
+                    "message": f"Successfully created issue #{issue_data.get('number', '')}",
+                    "data": issue_data
                 }
-            else:
-                return {
-                    "status": "error",
-                    "message": "No response from MCP server"
-                }
+
+            return {"status": "error", "message": "No response from MCP server"}
 
         except Exception as e:
-            return {
-                "status": "error",
-                "message": f"Error creating issue via MCP: {str(e)}"
-            }
+            return {"status": "error", "message": f"Error creating issue via MCP: {str(e)}"}
 
-    async def get_repository_info(self, repo_owner: str, repo_name: str) -> Dict:
+    async def get_repository_info(self, repo_owner: str, repo_name: str) -> Dict[str, Any]:
         """
         Get repository information using MCP.
 

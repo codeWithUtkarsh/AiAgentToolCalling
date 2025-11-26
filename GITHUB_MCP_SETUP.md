@@ -2,25 +2,20 @@
 
 This document explains how to set up and use the GitHub MCP (Model Context Protocol) integration in the Automated Dependency Update System.
 
-## 🚀 Automatic Installation (New!)
+## 🚀 Docker-Based Setup (Simplified!)
 
-**The GitHub MCP server is now automatically installed when you run the application!**
+**The GitHub MCP server now runs using Docker - no local installation required!**
 
-When you start `auto_update_dependencies.py`, it will:
-1. Check if GitHub MCP server is already installed
-2. If not found, automatically clone and build it from source
-3. Install it to `/usr/local/bin/github-mcp-server`
-4. Continue with the dependency update process
+When you use the application, it will automatically:
+1. Pull the official GitHub MCP Docker image if not present
+2. Run the MCP server in a container
+3. Connect and perform GitHub operations
+4. Clean up the container after use
 
-**Requirements for automatic installation:**
-- Go must be installed on your system ([Install Go](https://go.dev/doc/install))
-- Internet connection to clone the GitHub MCP server repository
-- Sudo access (if `/usr/local/bin` requires elevated permissions)
-
-You can also run the installer standalone:
-```bash
-python setup_github_mcp.py
-```
+**Requirements:**
+- Docker must be installed and running ([Install Docker](https://docs.docker.com/get-docker/))
+- Internet connection to pull the Docker image
+- GitHub Personal Access Token (see below)
 
 ## What is GitHub MCP?
 
@@ -29,45 +24,45 @@ GitHub MCP is a Model Context Protocol server that provides programmatic access 
 ## Benefits of MCP Integration
 
 - **No CLI required**: Works without installing the GitHub CLI
+- **Docker-based**: Portable and easy to set up across platforms
+- **No manual building**: Docker image is pre-built and ready to use
 - **Programmatic access**: Direct API integration for better error handling
 - **Standardized interface**: Uses the MCP protocol for consistent tool calling
 - **Better error messages**: More detailed error reporting
 - **Token-based auth**: Simple environment variable authentication
+- **Automatic cleanup**: Docker containers are removed after use
 
 ## Prerequisites
 
-### 1. GitHub MCP Server Binary
+### 1. Docker
 
-**Automatic Installation (Recommended):**
+Install Docker on your system:
 
-The GitHub MCP server will be automatically installed when you run the application. Just make sure you have Go installed:
-
+**Linux:**
 ```bash
-# Check if Go is installed
-go version
-
-# If not installed, visit: https://go.dev/doc/install
-```
-
-**Manual Installation (Optional):**
-
-If you prefer to install manually or the automatic installation fails:
-
-```bash
-# Clone the repository
-cd /tmp
-git clone https://github.com/github/github-mcp-server.git
-
-# Build the binary
-cd github-mcp-server
-go build -o github-mcp-server ./cmd/github-mcp-server
-
-# Install (may require sudo)
-sudo cp github-mcp-server /usr/local/bin/github-mcp-server
-sudo chmod +x /usr/local/bin/github-mcp-server
+# Ubuntu/Debian
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
 
 # Verify installation
-/usr/local/bin/github-mcp-server --version
+docker --version
+docker run hello-world
+```
+
+**macOS:**
+- Download Docker Desktop from https://www.docker.com/products/docker-desktop
+
+**Windows:**
+- Download Docker Desktop from https://www.docker.com/products/docker-desktop
+
+**Verify Docker is running:**
+```bash
+docker ps
+```
+
+The GitHub MCP Docker image will be automatically pulled when first used:
+```
+ghcr.io/github/github-mcp-server
 ```
 
 ### 2. Python MCP Package
@@ -214,7 +209,7 @@ print(result)
    - `create_github_issue()` tool - Uses MCP instead of gh CLI
 
 3. **auto_update_dependencies.py** - Updated prerequisites
-   - Checks for GitHub MCP server binary
+   - Uses Docker to run GitHub MCP server
    - Checks for GITHUB_PERSONAL_ACCESS_TOKEN
 
 ### Data Flow
@@ -232,7 +227,8 @@ GitHubMCPClient (async)
        ↓
 MCP Protocol over stdio
        ↓
-GitHub MCP Server Binary
+Docker Container
+  ghcr.io/github/github-mcp-server
        ↓
 GitHub REST API
 ```
@@ -251,11 +247,36 @@ The GitHub MCP server provides many tools. Here are the main ones used:
 
 ## Troubleshooting
 
-### "GitHub MCP server not found"
+### "Docker not found" or "Cannot connect to Docker daemon"
 
-The binary is not installed at `/usr/local/bin/github-mcp-server`.
+Docker is not installed or not running.
 
-**Solution:** Build and install the GitHub MCP server (see Prerequisites).
+**Solution:**
+```bash
+# Check if Docker is installed
+docker --version
+
+# Check if Docker daemon is running
+docker ps
+
+# Start Docker (Linux systemd)
+sudo systemctl start docker
+
+# Or use Docker Desktop GUI on macOS/Windows
+```
+
+### "Cannot pull Docker image"
+
+Network issues or Docker registry problems.
+
+**Solution:**
+```bash
+# Manually pull the image
+docker pull ghcr.io/github/github-mcp-server
+
+# Check if image exists
+docker images | grep github-mcp-server
+```
 
 ### "GITHUB_PERSONAL_ACCESS_TOKEN not set"
 
@@ -294,16 +315,18 @@ pip install mcp>=1.0.0
 
 ## Comparison: GitHub CLI vs MCP
 
-| Feature | GitHub CLI (gh) | GitHub MCP |
-|---------|----------------|------------|
-| Installation | Requires gh CLI binary | Requires Go to build server |
+| Feature | GitHub CLI (gh) | GitHub MCP (Docker) |
+|---------|----------------|---------------------|
+| Installation | Requires gh CLI binary | Requires Docker only |
 | Authentication | `gh auth login` | Environment variable |
 | Interface | Command-line subprocess | Python async/await |
 | Error Handling | Parse stderr text | Structured responses |
 | Integration | Shell commands | Native Python |
-| Dependencies | External binary | Python package + server |
+| Dependencies | External binary | Docker + Python package |
 | Performance | Subprocess overhead | Direct API calls |
 | Flexibility | CLI flags only | Full API access |
+| Portability | OS-specific binary | Cross-platform (Docker) |
+| Updates | Manual upgrades | Docker image updates |
 
 ## Migration from GitHub CLI
 
