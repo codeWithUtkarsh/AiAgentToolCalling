@@ -43,6 +43,43 @@ def _get_event_loop():
     return _thread_local.loop
 
 
+def _find_command_path(command: str) -> Optional[str]:
+    """
+    Find the full path to a command, checking common locations.
+
+    Args:
+        command: Command name to find (e.g., 'docker', 'podman')
+
+    Returns:
+        Full path to command if found, None otherwise
+    """
+    import shutil
+
+    # First try using shutil.which (respects PATH)
+    cmd_path = shutil.which(command)
+    if cmd_path:
+        return cmd_path
+
+    # Common installation paths for macOS
+    common_paths = [
+        f'/usr/local/bin/{command}',
+        f'/opt/homebrew/bin/{command}',
+        f'/usr/bin/{command}',
+        f'/opt/local/bin/{command}',
+        # OrbStack specific paths
+        f'/Applications/OrbStack.app/Contents/MacOS/{command}',
+        f'~/.orbstack/bin/{command}',
+    ]
+
+    # Expand ~ and check if file exists
+    for path in common_paths:
+        expanded_path = os.path.expanduser(path)
+        if os.path.isfile(expanded_path) and os.access(expanded_path, os.X_OK):
+            return expanded_path
+
+    return None
+
+
 def _detect_container_runtime() -> str:
     """
     Auto-detect available container runtime.
@@ -53,7 +90,7 @@ def _detect_container_runtime() -> str:
     3. nerdctl (containerd with nerdctl)
 
     Returns:
-        Name of the detected container runtime command
+        Full path or name of the detected container runtime command
 
     Raises:
         RuntimeError: If no container runtime is found
@@ -61,22 +98,40 @@ def _detect_container_runtime() -> str:
     runtimes = ['docker', 'podman', 'nerdctl']
 
     for runtime in runtimes:
-        try:
-            result = subprocess.run(
-                [runtime, '--version'],
-                capture_output=True,
-                timeout=5
-            )
-            if result.returncode == 0:
-                return runtime
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            continue
+        # Try to find the command path
+        cmd_path = _find_command_path(runtime)
 
-    raise RuntimeError(
-        "No container runtime found. Please install one of: Docker Desktop, "
-        "OrbStack, Podman Desktop, Rancher Desktop, or Podman.\n"
-        "Supported runtimes: docker, podman, nerdctl"
+        if cmd_path:
+            # Verify it works by running --version
+            try:
+                result = subprocess.run(
+                    [cmd_path, '--version'],
+                    capture_output=True,
+                    timeout=5,
+                    text=True
+                )
+                if result.returncode == 0:
+                    # Return the full path if it's not standard, otherwise just the name
+                    if cmd_path != runtime and not cmd_path.startswith('/usr/'):
+                        return cmd_path
+                    return runtime
+            except (subprocess.TimeoutExpired, Exception):
+                continue
+
+    # Provide helpful error message
+    error_msg = (
+        "No container runtime found. Please ensure one of the following is installed and in PATH:\n"
+        "  • Docker Desktop: https://www.docker.com/products/docker-desktop\n"
+        "  • OrbStack (macOS): https://orbstack.dev/\n"
+        "  • Podman Desktop: https://podman-desktop.io/\n"
+        "  • Rancher Desktop: https://rancherdesktop.io/\n\n"
+        "If you have OrbStack or Docker installed, try:\n"
+        "  1. Restart your terminal\n"
+        "  2. Ensure OrbStack/Docker Desktop is running\n"
+        "  3. Run: which docker (should show the docker path)\n"
+        "  4. Add to PATH if needed: export PATH=\"/usr/local/bin:$PATH\""
     )
+    raise RuntimeError(error_msg)
 
 
 class GitHubMCPClient:
