@@ -178,8 +178,9 @@ async def process_repository_update(
 
         # Run the update process
         print(f"[Job {job_id}] Processing repository: {repository}")
+
         result = agent.invoke({
-            "input": f"Analyze and update dependencies for repository: {repository}"
+            "messages": [("user", f"Analyze and update dependencies for repository: {repository}")]
         })
 
         # Update job with results
