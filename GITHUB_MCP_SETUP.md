@@ -34,9 +34,32 @@ GitHub MCP is a Model Context Protocol server that provides programmatic access 
 
 ## Prerequisites
 
-### 1. Docker
+### 1. Container Runtime (Docker, OrbStack, etc.)
 
-Install Docker on your system:
+Install a Docker-compatible container runtime on your system:
+
+**macOS (recommended):**
+```bash
+# Option 1: OrbStack (lightweight, fast, recommended)
+brew install orbstack
+
+# Option 2: Docker Desktop
+# Download from https://www.docker.com/products/docker-desktop
+```
+
+**Important for macOS Users - Fix PATH:**
+
+If you encounter "docker: command not found" errors in Python, add docker to your PATH:
+
+```bash
+# For zsh (macOS default)
+echo 'export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# For bash
+echo 'export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"' >> ~/.bash_profile
+source ~/.bash_profile
+```
 
 **Linux:**
 ```bash
@@ -46,24 +69,29 @@ sudo sh get-docker.sh
 
 # Verify installation
 docker --version
-docker run hello-world
 ```
-
-**macOS:**
-- Download Docker Desktop from https://www.docker.com/products/docker-desktop
 
 **Windows:**
 - Download Docker Desktop from https://www.docker.com/products/docker-desktop
 
-**Verify Docker is running:**
+**Verify it's working:**
 ```bash
 docker ps
+# Or for OrbStack/Podman
+docker --version
 ```
 
-The GitHub MCP Docker image will be automatically pulled when first used:
+The GitHub MCP container image will be automatically pulled when first used:
 ```
 ghcr.io/github/github-mcp-server
 ```
+
+**Supported Container Runtimes:**
+The system auto-detects and works with:
+- Docker Desktop
+- OrbStack (macOS)
+- Podman Desktop
+- Rancher Desktop
 
 ### 2. Python MCP Package
 
@@ -118,87 +146,88 @@ source ~/.zshrc
 
 ## Testing the Integration
 
-### Quick Test (Recommended)
+### Diagnostic Test (Recommended)
 
-Fast verification that everything is working:
-
-```bash
-python quick_test_mcp.py
-```
-
-Expected output:
-```
-🚀 Quick GitHub MCP Connection Test
-==================================================
-✅ Token found (40 chars)
-✅ MCP client module loaded
-
-🔌 Connecting to GitHub MCP server...
-✅ Connected to GitHub MCP server!
-✅ 15 tools available
-
-📋 Available tools (first 5):
-   • create_pull_request
-   • create_issue
-   • get_repository
-   • list_pull_requests
-   • get_pull_request
-
-==================================================
-✅ GitHub MCP is working correctly!
-==================================================
-```
-
-### Comprehensive Diagnostics
-
-For troubleshooting or first-time setup:
+Run comprehensive diagnostics to verify everything is set up correctly:
 
 ```bash
 python diagnose_github_mcp.py
 ```
 
-This runs 9 comprehensive tests and provides detailed error messages.
-
-### stdio Mode Verification
-
-To specifically test stdio mode communication:
-
-```bash
-python test_mcp_stdio.py
-```
-
-### Original Basic Test
-
-Test if the GitHub MCP server is working:
-
-```bash
-python test_github_mcp.py
-```
-
-Expected output:
+Expected output when everything is working:
 
 ```
-============================================================
-GitHub MCP Integration Test
-============================================================
+======================================================================
+                GitHub MCP Integration Diagnostic Tool
+======================================================================
 
-🧪 Testing GitHub MCP connection...
+======================================================================
+                        1. Prerequisites Check
+======================================================================
 
-✅ Token found
+🧪 Testing: Python version
+✅ Python 3.11.14 (compatible)
+
+🧪 Testing: Container runtime
+✅ docker installed: Docker version 28.3.3
+ℹ️  Runtime type: Docker Desktop / OrbStack / Rancher Desktop
+
+🧪 Testing: Docker runtime status
+✅ Docker runtime is working
+
+🧪 Testing: Python packages
+✅ mcp: installed (Model Context Protocol client)
+✅ anthropic: installed (Anthropic API client)
+✅ dotenv: installed (Environment variable loader)
+
+🧪 Testing: GitHub Personal Access Token
+✅ Token found: ghp_****
+
+======================================================================
+              2. Container Functionality Tests (docker)
+======================================================================
+
+🧪 Testing: Container execution test
+✅ Docker can run containers successfully
+
+🧪 Testing: GitHub MCP container image
+✅ Image available locally: ghcr.io/github/github-mcp-server:latest
+
+======================================================================
+                       3. MCP Integration Tests
+======================================================================
+
+🧪 Testing: MCP client connection
 ✅ Connected to GitHub MCP server
+✅ Found 15 available tools
 
-📋 Available GitHub MCP tools:
-   - create_pull_request
-   - create_issue
-   - get_repository
-   - ... (more tools)
+🧪 Testing: MCP tool execution
+✅ Successfully called MCP tool
 
-✅ Found X GitHub tools
+======================================================================
+                         Test Results Summary
+======================================================================
 
-============================================================
-✅ All tests passed!
-============================================================
+Python Version: PASS
+Runtime Installed: PASS
+Runtime Working: PASS
+Python Packages: PASS
+Github Token: PASS
+Container Run: PASS
+Container Image: PASS
+Mcp Connection: PASS
+Mcp Tool Call: PASS
+
+Overall: 9/9 tests passed
+
+======================================================================
+                          ✅ All Tests Passed!
+======================================================================
+
+✅ GitHub MCP integration is working correctly!
 ```
+
+**If any tests fail**, the diagnostic tool will provide specific troubleshooting instructions for your issue.
 
 ### Test from Python
 

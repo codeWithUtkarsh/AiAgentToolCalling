@@ -217,6 +217,93 @@ cp .env.example .env
 # Edit .env and add your API key
 ```
 
+### GitHub MCP Setup (Required for PR/Issue Creation)
+
+The system uses GitHub MCP (Model Context Protocol) to create Pull Requests and Issues automatically.
+
+#### Prerequisites
+
+1. **Container Runtime** (Docker, OrbStack, Podman, etc.)
+   - **macOS**: Install [OrbStack](https://orbstack.dev/) (recommended) or [Docker Desktop](https://www.docker.com/products/docker-desktop)
+   - **Windows/Linux**: Install [Docker Desktop](https://www.docker.com/products/docker-desktop)
+
+2. **GitHub Personal Access Token**
+   - Create at: https://github.com/settings/tokens
+   - Required scopes: `repo`, `workflow`
+
+#### Setup Steps
+
+**1. Install Container Runtime (if not already installed)**
+
+macOS (choose one):
+```bash
+# Option 1: OrbStack (recommended - lightweight and fast)
+brew install orbstack
+
+# Option 2: Docker Desktop
+# Download from https://www.docker.com/products/docker-desktop
+```
+
+**2. Fix PATH for macOS/OrbStack Users**
+
+If you're on macOS and encounter "docker: command not found" errors in Python:
+
+```bash
+# Add to your shell configuration
+echo 'export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+For bash users:
+```bash
+echo 'export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"' >> ~/.bash_profile
+source ~/.bash_profile
+```
+
+**3. Set GitHub Token**
+
+```bash
+export GITHUB_PERSONAL_ACCESS_TOKEN='your_github_token_here'
+```
+
+To make it permanent:
+```bash
+# For zsh (macOS default)
+echo 'export GITHUB_PERSONAL_ACCESS_TOKEN="your_token"' >> ~/.zshrc
+source ~/.zshrc
+
+# For bash
+echo 'export GITHUB_PERSONAL_ACCESS_TOKEN="your_token"' >> ~/.bash_profile
+source ~/.bash_profile
+```
+
+**4. Verify Setup**
+
+Test your GitHub MCP setup:
+```bash
+python diagnose_github_mcp.py
+```
+
+Expected output:
+```
+✅ Container runtime: PASS
+✅ GitHub token: PASS
+✅ MCP connection: PASS
+✅ MCP tool call: PASS
+```
+
+If any tests fail, the diagnostic tool will show specific instructions to fix the issue.
+
+#### Supported Container Runtimes
+
+The system automatically detects and works with:
+- **Docker Desktop** - Official Docker
+- **OrbStack** - Lightweight Docker alternative for macOS
+- **Podman Desktop** - Daemonless container engine
+- **Rancher Desktop** - Kubernetes + containers
+
+No configuration needed - it auto-detects which one you have installed!
+
 ## 🚀 Usage
 
 ### Automated Update with Testing (New! Recommended)
