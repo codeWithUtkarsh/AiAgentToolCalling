@@ -21,6 +21,9 @@ from langchain_core.tools import tool
 from langchain_anthropic import ChatAnthropic
 from langchain.agents import create_agent
 
+# Import caching module
+from repository_cache import get_cache
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -28,7 +31,7 @@ load_dotenv()
 @tool
 def clone_repository(repo_url: str) -> str:
     """
-    Clone a git repository to a temporary directory.
+    Clone a git repository to a temporary directory with caching support.
 
     Args:
         repo_url: The URL of the git repository to clone (e.g., https://github.com/owner/repo)
@@ -37,6 +40,23 @@ def clone_repository(repo_url: str) -> str:
         JSON string with status and repository path
     """
     try:
+        cache = get_cache()
+
+        # Check if repository is already cached
+        cached_path = cache.get_cached_repository(repo_url)
+        if cached_path:
+            # Copy cached repo to temp directory
+            temp_dir = tempfile.mkdtemp(prefix="dep_analyzer_")
+            shutil.copytree(cached_path, temp_dir, dirs_exist_ok=True)
+
+            return json.dumps({
+                "status": "success",
+                "repo_path": temp_dir,
+                "message": f"Repository loaded from cache to {temp_dir}",
+                "from_cache": True
+            })
+
+        # Clone fresh repository
         temp_dir = tempfile.mkdtemp(prefix="dep_analyzer_")
         result = subprocess.run(
             ["git", "clone", "--depth", "1", repo_url, temp_dir],
@@ -51,10 +71,18 @@ def clone_repository(repo_url: str) -> str:
                 "message": f"Failed to clone repository: {result.stderr}"
             })
 
+        # Cache the cloned repository
+        try:
+            cache.cache_repository(repo_url, temp_dir)
+        except Exception as cache_error:
+            # Don't fail if caching fails
+            print(f"Warning: Failed to cache repository: {cache_error}")
+
         return json.dumps({
             "status": "success",
             "repo_path": temp_dir,
-            "message": f"Repository cloned successfully to {temp_dir}"
+            "message": f"Repository cloned successfully to {temp_dir}",
+            "from_cache": False
         })
     except Exception as e:
         return json.dumps({
@@ -190,17 +218,27 @@ def read_dependency_file(repo_path: str, file_path: str) -> str:
 
 
 @tool
-def check_npm_outdated(repo_path: str) -> str:
+def check_npm_outdated(repo_path: str, repo_url: str = "") -> str:
     """
-    Check for outdated npm packages using npm outdated command.
+    Check for outdated npm packages using npm outdated command with caching.
 
     Args:
         repo_path: Path to the repository
+        repo_url: Repository URL for caching (optional)
 
     Returns:
         JSON string with outdated packages information
     """
     try:
+        cache = get_cache()
+
+        # Check cache if repo_url provided
+        if repo_url:
+            cached_data = cache.get_cached_outdated(repo_url)
+            if cached_data and cached_data.get("package_manager") == "npm":
+                cached_data["from_cache"] = True
+                return json.dumps(cached_data, indent=2)
+
         original_dir = os.getcwd()
         os.chdir(repo_path)
 
@@ -231,20 +269,40 @@ def check_npm_outdated(repo_path: str) -> str:
                         "location": info.get("location", "N/A")
                     })
 
-                return json.dumps({
+                result_data = {
                     "status": "success",
                     "package_manager": "npm",
                     "outdated_count": len(outdated_list),
-                    "outdated_packages": outdated_list
-                }, indent=2)
+                    "outdated_packages": outdated_list,
+                    "from_cache": False
+                }
+
+                # Cache the results if repo_url provided
+                if repo_url:
+                    try:
+                        cache.cache_outdated(repo_url, result_data)
+                    except Exception as cache_error:
+                        print(f"Warning: Failed to cache outdated data: {cache_error}")
+
+                return json.dumps(result_data, indent=2)
             except json.JSONDecodeError:
-                return json.dumps({
+                result_data = {
                     "status": "success",
                     "package_manager": "npm",
                     "outdated_count": 0,
                     "outdated_packages": [],
-                    "message": "All packages are up to date"
-                })
+                    "message": "All packages are up to date",
+                    "from_cache": False
+                }
+
+                # Cache the results if repo_url provided
+                if repo_url:
+                    try:
+                        cache.cache_outdated(repo_url, result_data)
+                    except Exception as cache_error:
+                        print(f"Warning: Failed to cache outdated data: {cache_error}")
+
+                return json.dumps(result_data, indent=2)
         else:
             return json.dumps({
                 "status": "success",
@@ -263,17 +321,27 @@ def check_npm_outdated(repo_path: str) -> str:
 
 
 @tool
-def check_pip_outdated(repo_path: str) -> str:
+def check_pip_outdated(repo_path: str, repo_url: str = "") -> str:
     """
-    Check for outdated pip packages by reading requirements.txt.
+    Check for outdated pip packages by reading requirements.txt with caching.
 
     Args:
         repo_path: Path to the repository
+        repo_url: Repository URL for caching (optional)
 
     Returns:
         JSON string with outdated packages information
     """
     try:
+        cache = get_cache()
+
+        # Check cache if repo_url provided
+        if repo_url:
+            cached_data = cache.get_cached_outdated(repo_url)
+            if cached_data and cached_data.get("package_manager") == "pip":
+                cached_data["from_cache"] = True
+                return json.dumps(cached_data, indent=2)
+
         requirements_file = os.path.join(repo_path, "requirements.txt")
 
         if not os.path.exists(requirements_file):
@@ -341,12 +409,22 @@ def check_pip_outdated(repo_path: str) -> str:
                 print(f"Warning: Could not check {pkg.get('name', 'unknown')}: {e}")
                 continue
 
-        return json.dumps({
+        result_data = {
             "status": "success",
             "package_manager": "pip",
             "outdated_count": len(outdated_list),
-            "outdated_packages": outdated_list
-        }, indent=2)
+            "outdated_packages": outdated_list,
+            "from_cache": False
+        }
+
+        # Cache the results if repo_url provided
+        if repo_url:
+            try:
+                cache.cache_outdated(repo_url, result_data)
+            except Exception as cache_error:
+                print(f"Warning: Failed to cache outdated data: {cache_error}")
+
+        return json.dumps(result_data, indent=2)
 
     except Exception as e:
         return json.dumps({"status": "error", "message": f"Error checking pip packages: {str(e)}"})

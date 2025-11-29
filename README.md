@@ -632,13 +632,57 @@ Update all three agent files and set your OpenAI API key:
 export OPENAI_API_KEY='your-api-key-here'
 ```
 
+## 🗂️ Caching
+
+The system includes smart caching to improve performance and reduce API calls:
+
+### How Caching Works
+
+- **Repository Caching**: Cloned repositories are cached locally to avoid re-cloning
+- **Analysis Caching**: Dependency analysis results are cached
+- **Outdated Package Caching**: Results from package registry checks are cached
+- **TTL-Based Expiration**: Cache expires after a configurable time period
+
+### Configuration
+
+Set cache expiry time in hours via environment variable:
+
+```bash
+# Set in .env file or export
+CACHE_EXPIRY_HOURS=24  # Default: 24 hours
+```
+
+### Cache Location
+
+Cache is stored at: `~/.cache/ai-dependency-updater/`
+
+### Cache Management
+
+```bash
+# View cache statistics
+python repository_cache.py stats
+
+# Clean up expired cache entries
+python repository_cache.py cleanup
+
+# Clear all cache
+python repository_cache.py clear
+```
+
+### Cache Benefits
+
+- ⚡ **Faster repeated analyses** - No need to re-clone repositories
+- 💰 **Reduced API calls** - Cached package registry lookups
+- 🌐 **Works offline** - Can analyze previously cached repositories
+- 📊 **Smart invalidation** - Automatic expiration based on TTL
+
 ## ⚠️ Limitations
 
 - Some package managers require additional tools (e.g., `cargo-outdated` for Rust)
-- Large repositories may take time to clone and analyze
+- Large repositories may take time to clone and analyze (first time only, then cached)
 - Some checks require the package manager to be installed locally
-- Network connectivity required for cloning and checking updates
-- Requires Docker for GitHub MCP integration
+- Network connectivity required for cloning and checking updates (unless using cache)
+- Requires container runtime (Docker/OrbStack/Podman) for GitHub MCP integration
 - Automatically creates PRs on success and Issues when updates fail
 
 ## 📝 Example Scenarios
