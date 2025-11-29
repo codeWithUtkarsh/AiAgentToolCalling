@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # API Server
+  api-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_PERSONAL_ACCESS_TOKEN}
+      - PORT=8000
+      - HOST=0.0.0.0
+    volumes:
+      # Mount Docker socket to allow API server to run Docker commands
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount temporary directory for repository cloning
+      - ./tmp:/tmp/repos
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - github-mcp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # GitHub MCP Server (persistent for better performance)
+  github-mcp:
+    image: ghcr.io/github/github-mcp-server:latest
+    environment:
+      - GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_PERSONAL_ACCESS_TOKEN}
+    networks:
+      - app-network
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  tmp-repos:
+    driver: local

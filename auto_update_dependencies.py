@@ -114,6 +114,46 @@ Return the final PR URL or Issue URL.""")]
         })
 
 
+def validate_prerequisites() -> tuple[bool, str]:
+    """
+    Validate that all prerequisites are met for running the dependency updater.
+
+    Returns:
+        tuple: (is_valid: bool, message: str)
+    """
+    # Check for Docker
+    try:
+        docker_check = subprocess.run(
+            ["docker", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if docker_check.returncode != 0:
+            return False, "Docker is not available. Please install Docker from https://docs.docker.com/get-docker/"
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False, "Docker is not available. Please install Docker from https://docs.docker.com/get-docker/"
+
+    # Check for GitHub Personal Access Token
+    github_token = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")
+    if not github_token:
+        return False, (
+            "GITHUB_PERSONAL_ACCESS_TOKEN not set. "
+            "Please set your GitHub token: export GITHUB_PERSONAL_ACCESS_TOKEN='your_token_here'. "
+            "Create a token at: https://github.com/settings/tokens (Required scopes: repo, workflow)"
+        )
+
+    # Check for Anthropic API key
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    if not anthropic_key:
+        return False, (
+            "ANTHROPIC_API_KEY not set. "
+            "Please set your Anthropic API key: export ANTHROPIC_API_KEY='your_key_here'"
+        )
+
+    return True, "All prerequisites validated successfully"
+
+
 def create_main_orchestrator():
     """
     Create the main orchestrator agent that coordinates the entire workflow.
@@ -254,34 +294,13 @@ Setup GitHub Access:
 
     # Check prerequisites
     print("🔍 Checking prerequisites...")
+    is_valid, message = validate_prerequisites()
 
-    # Check for Docker (GitHub MCP runs in Docker)
-    print("  🐳 Checking Docker...")
-    docker_check = subprocess.run(
-        ["docker", "--version"],
-        capture_output=True,
-        text=True
-    )
-    if docker_check.returncode != 0:
-        print()
-        print("  ❌ Docker not found")
-        print("     Install Docker: https://docs.docker.com/get-docker/")
-        sys.exit(1)
-    print("  ✅ Docker is available")
-
-    # Check for GitHub Personal Access Token
-    github_token = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")
-    if github_token:
-        print("  ✅ GITHUB_PERSONAL_ACCESS_TOKEN found")
-    else:
-        print("  ❌ GITHUB_PERSONAL_ACCESS_TOKEN not set")
-        print("     Set your GitHub token:")
-        print("     export GITHUB_PERSONAL_ACCESS_TOKEN='your_token_here'")
-        print()
-        print("     Create a token at: https://github.com/settings/tokens")
-        print("     Required scopes: repo, workflow")
+    if not is_valid:
+        print(f"\n❌ {message}\n")
         sys.exit(1)
 
+    print("✅ All prerequisites validated")
     print()
 
     # Create and run orchestrator

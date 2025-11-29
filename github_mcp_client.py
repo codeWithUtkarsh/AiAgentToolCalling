@@ -11,12 +11,15 @@ import json
 import subprocess
 import threading
 from typing import Dict, Optional, Any
+
+from dotenv import load_dotenv
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 # Thread-local storage for event loops
 _thread_local = threading.local()
 
+load_dotenv()
 
 def _get_event_loop():
     """Get or create an event loop for the current thread."""
