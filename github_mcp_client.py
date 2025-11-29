@@ -350,8 +350,9 @@ class GitHubMCPClient:
             labels = ["dependencies"]
 
         try:
+            # Use issue_write tool (actual tool name in GitHub MCP)
             result = await self.session.call_tool(
-                "create_issue",
+                "issue_write",
                 arguments={
                     "owner": repo_owner,
                     "repo": repo_name,
@@ -400,11 +401,11 @@ class GitHubMCPClient:
             raise RuntimeError("Session not initialized. Use async context manager.")
 
         try:
+            # Use search_repositories to find the repo
             result = await self.session.call_tool(
-                "get_repository",
+                "search_repositories",
                 arguments={
-                    "owner": repo_owner,
-                    "repo": repo_name
+                    "query": f"repo:{repo_owner}/{repo_name}"
                 }
             )
 

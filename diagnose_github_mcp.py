@@ -289,37 +289,41 @@ async def test_mcp_connection(token: str) -> bool:
 
 
 async def test_mcp_tool_call(token: str) -> bool:
-    """Test calling an MCP tool (non-destructive repository info query)."""
+    """Test calling an MCP tool (non-destructive query)."""
     print_test("MCP tool execution")
 
     try:
         from github_mcp_client import GitHubMCPClient
 
-        # Use a well-known public repository for testing
-        test_owner = "github"
-        test_repo = "docs"
-
-        print_info(f"Testing get_repository for {test_owner}/{test_repo}...")
+        print_info("Testing get_me tool (gets authenticated user info)...")
 
         async with GitHubMCPClient(token) as client:
-            result = await client.get_repository_info(test_owner, test_repo)
+            # Use get_me tool which just returns authenticated user info
+            result = await client.session.call_tool("get_me", arguments={})
 
-            if result.get("status") == "success":
+            if result.content and len(result.content) > 0:
                 print_success("Successfully called MCP tool")
 
-                repo_data = result.get("data", {})
-                if repo_data:
-                    print(f"   • Repository: {repo_data.get('full_name', 'N/A')}")
-                    print(f"   • Description: {repo_data.get('description', 'N/A')[:60]}...")
-                    print(f"   • Stars: {repo_data.get('stargazers_count', 'N/A')}")
+                try:
+                    response_text = result.content[0].text if hasattr(result.content[0], 'text') else str(result.content[0])
+                    user_data = json.loads(response_text) if isinstance(response_text, str) else response_text
+
+                    if isinstance(user_data, dict):
+                        print(f"   • Authenticated as: {user_data.get('login', 'N/A')}")
+                        print(f"   • User type: {user_data.get('type', 'N/A')}")
+                except:
+                    # Even if parsing fails, the tool call succeeded
+                    pass
 
                 return True
             else:
-                print_error(f"Tool call failed: {result.get('message', 'Unknown error')}")
+                print_error("Tool call returned no content")
                 return False
 
     except Exception as e:
         print_error(f"Tool execution failed: {str(e)}")
+        import traceback
+        print(f"   {traceback.format_exc()[:200]}")
         return False
 
 
