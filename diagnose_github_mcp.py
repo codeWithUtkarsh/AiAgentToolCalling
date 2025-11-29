@@ -103,45 +103,61 @@ def check_python_version() -> bool:
         return False
 
 
-def check_docker_installed() -> bool:
-    """Check if Docker is installed."""
-    print_test("Docker installation")
+def check_container_runtime() -> tuple[bool, str]:
+    """Check if a container runtime is installed (Docker, OrbStack, Podman, etc.)."""
+    print_test("Container runtime")
 
-    exit_code, stdout, stderr = run_command(["docker", "--version"])
+    # Check for various container runtimes
+    runtimes = {
+        'docker': 'Docker Desktop / OrbStack / Rancher Desktop',
+        'podman': 'Podman Desktop / Podman',
+        'nerdctl': 'containerd with nerdctl'
+    }
+
+    for runtime, description in runtimes.items():
+        exit_code, stdout, stderr = run_command([runtime, "--version"])
+        if exit_code == 0:
+            version = stdout.strip().split('\n')[0]  # Get first line
+            print_success(f"{runtime} installed: {version}")
+            print_info(f"Runtime type: {description}")
+            return True, runtime
+
+    print_error("No container runtime found")
+    print_info("Install one of:")
+    print_info("  • Docker Desktop: https://www.docker.com/products/docker-desktop")
+    print_info("  • OrbStack (macOS): https://orbstack.dev/")
+    print_info("  • Podman Desktop: https://podman-desktop.io/")
+    print_info("  • Rancher Desktop: https://rancherdesktop.io/")
+    return False, ""
+
+
+def check_container_runtime_working(runtime: str) -> bool:
+    """Check if container runtime daemon is running."""
+    print_test(f"{runtime.capitalize()} runtime status")
+
+    exit_code, stdout, stderr = run_command([runtime, "ps"], timeout=10)
 
     if exit_code == 0:
-        print_success(f"Docker installed: {stdout.strip()}")
+        print_success(f"{runtime.capitalize()} runtime is working")
         return True
     else:
-        print_error("Docker not installed or not in PATH")
-        print_info("Install Docker: https://docs.docker.com/get-docker/")
-        return False
-
-
-def check_docker_running() -> bool:
-    """Check if Docker daemon is running."""
-    print_test("Docker daemon status")
-
-    exit_code, stdout, stderr = run_command(["docker", "ps"], timeout=10)
-
-    if exit_code == 0:
-        print_success("Docker daemon is running")
-        return True
-    else:
-        print_error("Docker daemon is not running")
-        print_info("Start Docker Desktop or run: sudo systemctl start docker")
+        print_error(f"{runtime.capitalize()} runtime is not responding")
+        if runtime == 'docker':
+            print_info("Start Docker Desktop, OrbStack, or run: sudo systemctl start docker")
+        elif runtime == 'podman':
+            print_info("Start Podman Desktop or run: podman machine start")
         if stderr:
             print(f"   Error: {stderr.strip()}")
         return False
 
 
-def check_docker_image() -> bool:
-    """Check if GitHub MCP Docker image is available."""
-    print_test("GitHub MCP Docker image")
+def check_container_image(runtime: str) -> bool:
+    """Check if GitHub MCP container image is available."""
+    print_test("GitHub MCP container image")
 
     # Check if image exists locally
     exit_code, stdout, stderr = run_command(
-        ["docker", "images", "ghcr.io/github/github-mcp-server", "--format", "{{.Repository}}:{{.Tag}}"]
+        [runtime, "images", "ghcr.io/github/github-mcp-server", "--format", "{{.Repository}}:{{.Tag}}"]
     )
 
     if exit_code == 0 and stdout.strip():
@@ -153,7 +169,7 @@ def check_docker_image() -> bool:
 
         # Try to pull the image
         exit_code, stdout, stderr = run_command(
-            ["docker", "pull", "ghcr.io/github/github-mcp-server"],
+            [runtime, "pull", "ghcr.io/github/github-mcp-server"],
             timeout=120
         )
 
@@ -161,7 +177,7 @@ def check_docker_image() -> bool:
             print_success("Successfully pulled GitHub MCP image")
             return True
         else:
-            print_error("Failed to pull Docker image")
+            print_error("Failed to pull container image")
             if stderr:
                 print(f"   Error: {stderr.strip()}")
             return False
@@ -214,20 +230,20 @@ def check_python_packages() -> bool:
     return all_installed
 
 
-def test_docker_run() -> bool:
-    """Test running a simple Docker container."""
-    print_test("Docker container execution")
+def test_container_run(runtime: str) -> bool:
+    """Test running a simple container."""
+    print_test("Container execution test")
 
     exit_code, stdout, stderr = run_command(
-        ["docker", "run", "--rm", "alpine", "echo", "Docker works!"],
+        [runtime, "run", "--rm", "alpine", "echo", "Container works!"],
         timeout=30
     )
 
-    if exit_code == 0 and "Docker works!" in stdout:
-        print_success("Docker can run containers successfully")
+    if exit_code == 0 and "Container works!" in stdout:
+        print_success(f"{runtime.capitalize()} can run containers successfully")
         return True
     else:
-        print_error("Failed to run Docker container")
+        print_error("Failed to run test container")
         if stderr:
             print(f"   Error: {stderr.strip()}")
         return False
@@ -316,27 +332,37 @@ async def run_all_tests():
     # Prerequisites
     print_header("1. Prerequisites Check")
     results["python_version"] = check_python_version()
-    results["docker_installed"] = check_docker_installed()
-    results["docker_running"] = check_docker_running()
+
+    # Check for container runtime (Docker, OrbStack, Podman, etc.)
+    runtime_installed, detected_runtime = check_container_runtime()
+    results["runtime_installed"] = runtime_installed
+
+    if runtime_installed:
+        results["runtime_working"] = check_container_runtime_working(detected_runtime)
+    else:
+        print_warning("Skipping runtime checks (no container runtime found)")
+        results["runtime_working"] = False
+        detected_runtime = "docker"  # Default for error messages
+
     results["python_packages"] = check_python_packages()
 
     token = check_github_token()
     results["github_token"] = token is not None
 
-    # Docker tests
-    if results["docker_installed"] and results["docker_running"]:
-        print_header("2. Docker Functionality Tests")
-        results["docker_run"] = test_docker_run()
-        results["docker_image"] = check_docker_image()
+    # Container tests
+    if results["runtime_installed"] and results["runtime_working"]:
+        print_header(f"2. Container Functionality Tests ({detected_runtime})")
+        results["container_run"] = test_container_run(detected_runtime)
+        results["container_image"] = check_container_image(detected_runtime)
     else:
-        print_warning("Skipping Docker tests (Docker not available)")
-        results["docker_run"] = False
-        results["docker_image"] = False
+        print_warning("Skipping container tests (container runtime not available)")
+        results["container_run"] = False
+        results["container_image"] = False
 
     # MCP tests
     if all([results["python_packages"], results["github_token"],
-            results["docker_installed"], results["docker_running"],
-            results["docker_image"]]):
+            results["runtime_installed"], results["runtime_working"],
+            results["container_image"]]):
         print_header("3. MCP Integration Tests")
         results["mcp_connection"] = await test_mcp_connection(token)
 
@@ -372,11 +398,14 @@ async def run_all_tests():
         # Provide troubleshooting suggestions
         print(f"\n{Colors.BOLD}Troubleshooting Suggestions:{Colors.END}")
 
-        if not results["docker_installed"]:
-            print("• Install Docker: https://docs.docker.com/get-docker/")
+        if not results["runtime_installed"]:
+            print("• Install a container runtime:")
+            print("  - Docker Desktop: https://www.docker.com/products/docker-desktop")
+            print("  - OrbStack (macOS): https://orbstack.dev/")
+            print("  - Podman Desktop: https://podman-desktop.io/")
 
-        if not results["docker_running"]:
-            print("• Start Docker daemon or Docker Desktop")
+        if not results["runtime_working"]:
+            print("• Start your container runtime (Docker Desktop, OrbStack, etc.)")
 
         if not results["github_token"]:
             print("• Set GITHUB_PERSONAL_ACCESS_TOKEN environment variable")
@@ -385,11 +414,11 @@ async def run_all_tests():
         if not results["python_packages"]:
             print("• Install Python packages: pip install -r requirements.txt")
 
-        if not results["docker_image"]:
+        if not results.get("container_image"):
             print("• Manually pull image: docker pull ghcr.io/github/github-mcp-server")
 
-        if results.get("docker_image") and not results.get("mcp_connection"):
-            print("• Check Docker logs for MCP server errors")
+        if results.get("container_image") and not results.get("mcp_connection"):
+            print("• Check container logs for MCP server errors")
             print("• Verify GitHub token has correct permissions (repo, workflow)")
             print("• Check network connectivity")
 

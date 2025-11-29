@@ -43,10 +43,57 @@ def _get_event_loop():
     return _thread_local.loop
 
 
-class GitHubMCPClient:
-    """Client for interacting with GitHub via MCP server running inside Docker."""
+def _detect_container_runtime() -> str:
+    """
+    Auto-detect available container runtime.
 
-    def __init__(self, github_token: Optional[str] = None, toolsets: Optional[str] = None):
+    Checks for container runtimes in order of preference:
+    1. docker (Docker Desktop, OrbStack, Rancher Desktop)
+    2. podman (Podman Desktop, native Podman)
+    3. nerdctl (containerd with nerdctl)
+
+    Returns:
+        Name of the detected container runtime command
+
+    Raises:
+        RuntimeError: If no container runtime is found
+    """
+    runtimes = ['docker', 'podman', 'nerdctl']
+
+    for runtime in runtimes:
+        try:
+            result = subprocess.run(
+                [runtime, '--version'],
+                capture_output=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                return runtime
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+
+    raise RuntimeError(
+        "No container runtime found. Please install one of: Docker Desktop, "
+        "OrbStack, Podman Desktop, Rancher Desktop, or Podman.\n"
+        "Supported runtimes: docker, podman, nerdctl"
+    )
+
+
+class GitHubMCPClient:
+    """
+    Client for interacting with GitHub via MCP server running inside a container.
+
+    Supports multiple container runtimes:
+    - Docker Desktop
+    - OrbStack (macOS Docker alternative)
+    - Podman Desktop
+    - Rancher Desktop
+    - Native Podman
+    - containerd with nerdctl
+    """
+
+    def __init__(self, github_token: Optional[str] = None, toolsets: Optional[str] = None,
+                 container_runtime: Optional[str] = None):
         """
         Initialize GitHub MCP client.
 
@@ -54,6 +101,9 @@ class GitHubMCPClient:
             github_token: GitHub Personal Access Token (falls back to env var)
             toolsets: Comma-separated list of toolsets to enable (e.g., "repos,issues,pull_requests")
                      Use "all" to enable all toolsets. Defaults to basic toolsets.
+            container_runtime: Container runtime to use (docker, podman, nerdctl)
+                              If not specified, auto-detects available runtime.
+                              Works with Docker Desktop, OrbStack, Podman, etc.
         """
         self.github_token = github_token or os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")
         if not self.github_token:
@@ -62,9 +112,16 @@ class GitHubMCPClient:
                 "environment variable or pass token to constructor."
             )
 
-        # Updated: Use Docker to run the GitHub MCP Server in stdio mode
+        # Auto-detect or use specified container runtime
+        # Works with Docker Desktop, OrbStack, Podman, Rancher Desktop, etc.
+        if container_runtime:
+            self.container_runtime = container_runtime
+        else:
+            self.container_runtime = _detect_container_runtime()
+
+        # Build container arguments
         # Based on: https://github.com/github/github-mcp-server
-        docker_args = [
+        container_args = [
             "run",
             "-i",
             "--rm",
@@ -73,16 +130,16 @@ class GitHubMCPClient:
 
         # Add optional toolsets configuration
         if toolsets:
-            docker_args.extend(["-e", f"GITHUB_TOOLSETS={toolsets}"])
+            container_args.extend(["-e", f"GITHUB_TOOLSETS={toolsets}"])
 
-        docker_args.extend([
+        container_args.extend([
             "ghcr.io/github/github-mcp-server",
             "stdio"  # Run in stdio mode for MCP communication
         ])
 
         self.server_params = StdioServerParameters(
-            command="docker",
-            args=docker_args,
+            command=self.container_runtime,
+            args=container_args,
             env={
                 "GITHUB_PERSONAL_ACCESS_TOKEN": self.github_token
             }
