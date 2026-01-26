@@ -243,6 +243,7 @@ def check_npm_outdated(repo_path: str, repo_url: str = "") -> str:
         os.chdir(repo_path)
 
         if not os.path.exists("package.json"):
+            os.chdir(original_dir)
             return json.dumps({"status": "error", "message": "No package.json found"})
 
         # Run npm outdated
