@@ -82,6 +82,29 @@ class JobStatusResponse(BaseModel):
 jobs_storage: Dict[str, Dict[str, Any]] = {}
 
 
+async def test_mcp_connection():
+    """
+    Test actual MCP connection by listing available tools.
+    This verifies the full MCP protocol stack works.
+    """
+    from github_mcp_client import GitHubMCPClient
+    import asyncio
+
+    github_token = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")
+    if not github_token:
+        print("  ⚠️  GITHUB_PERSONAL_ACCESS_TOKEN not set - skipping MCP connection test")
+        return False
+
+    try:
+        async with GitHubMCPClient(github_token=github_token) as client:
+            tools = await client.list_available_tools()
+            print(f"  ✓ MCP connection successful - {len(tools)} tools available")
+            return True
+    except Exception as e:
+        print(f"  ⚠️  MCP connection test failed: {str(e)}")
+        return False
+
+
 async def setup_github_mcp_docker():
     """
     Pull and verify GitHub MCP Docker image on startup.
@@ -142,11 +165,15 @@ async def setup_github_mcp_docker():
         )
 
         if test_result.returncode == 0:
-            print("✓ MCP server validated successfully")
+            print("✓ MCP server container validated")
         else:
             print("⚠️  MCP server validation returned non-zero (may still work)")
 
-        print("✅ GitHub MCP Docker setup complete")
+        # Test actual MCP protocol connection
+        print("🔌 Testing MCP protocol connection...")
+        await test_mcp_connection()
+
+        print("✅ GitHub MCP setup complete")
 
     except subprocess.TimeoutExpired:
         raise RuntimeError("Docker command timed out")
