@@ -82,27 +82,35 @@ class JobStatusResponse(BaseModel):
 jobs_storage: Dict[str, Dict[str, Any]] = {}
 
 
-async def test_mcp_connection():
+async def start_persistent_mcp_server():
     """
-    Test actual MCP connection by listing available tools.
-    This verifies the full MCP protocol stack works.
+    Start the persistent MCP server.
+    This keeps the MCP container running for the lifetime of the API server.
     """
-    from github_mcp_client import GitHubMCPClient
-    import asyncio
+    from mcp_server_manager import start_mcp_server, get_mcp_status
 
-    github_token = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")
-    if not github_token:
-        print("  ⚠️  GITHUB_PERSONAL_ACCESS_TOKEN not set - skipping MCP connection test")
-        return False
+    print("🔌 Starting persistent MCP server...")
+    success = await start_mcp_server()
 
-    try:
-        async with GitHubMCPClient(github_token=github_token) as client:
-            tools = await client.list_available_tools()
-            print(f"  ✓ MCP connection successful - {len(tools)} tools available")
-            return True
-    except Exception as e:
-        print(f"  ⚠️  MCP connection test failed: {str(e)}")
-        return False
+    if success:
+        status = await get_mcp_status()
+        print(f"  ✓ Persistent MCP server running - {status.tools_count} tools available")
+        if status.container_id:
+            print(f"  ✓ Container ID: {status.container_id[:12]}")
+    else:
+        status = await get_mcp_status()
+        print(f"  ⚠️  Failed to start persistent MCP server: {status.error_message}")
+
+    return success
+
+
+async def stop_persistent_mcp_server():
+    """Stop the persistent MCP server on shutdown."""
+    from mcp_server_manager import stop_mcp_server
+
+    print("🛑 Stopping persistent MCP server...")
+    await stop_mcp_server()
+    print("  ✓ Persistent MCP server stopped")
 
 
 async def setup_github_mcp_docker():
@@ -169,9 +177,8 @@ async def setup_github_mcp_docker():
         else:
             print("⚠️  MCP server validation returned non-zero (may still work)")
 
-        # Test actual MCP protocol connection
-        print("🔌 Testing MCP protocol connection...")
-        await test_mcp_connection()
+        # Start the persistent MCP server (keeps running until shutdown)
+        await start_persistent_mcp_server()
 
         print("✅ GitHub MCP setup complete")
 
@@ -201,6 +208,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     print("👋 Shutting down server...")
+    await stop_persistent_mcp_server()
 
 
 # Create FastAPI app with lifespan
@@ -280,8 +288,10 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Detailed health check including Docker availability"""
+    """Detailed health check including Docker and MCP server availability"""
     try:
+        from mcp_server_manager import get_mcp_status, MCPServerStatus
+
         # Check Docker
         docker_cmd = get_docker_path()
         docker_check = subprocess.run(
@@ -300,12 +310,24 @@ async def health_check():
         anthropic_key = os.getenv("ANTHROPIC_API_KEY")
         api_key_configured = anthropic_key is not None
 
+        # Check MCP server status
+        mcp_status = await get_mcp_status()
+        mcp_running = mcp_status.status == MCPServerStatus.RUNNING
+
+        all_healthy = all([docker_available, token_configured, api_key_configured, mcp_running])
+
         return {
-            "status": "healthy" if all([docker_available, token_configured, api_key_configured]) else "degraded",
+            "status": "healthy" if all_healthy else "degraded",
             "checks": {
                 "docker": "available" if docker_available else "unavailable",
                 "github_token": "configured" if token_configured else "missing",
-                "anthropic_api_key": "configured" if api_key_configured else "missing"
+                "anthropic_api_key": "configured" if api_key_configured else "missing",
+                "mcp_server": {
+                    "status": mcp_status.status.value,
+                    "tools_count": mcp_status.tools_count,
+                    "container_id": mcp_status.container_id[:12] if mcp_status.container_id else None,
+                    "error": mcp_status.error_message
+                }
             }
         }
     except Exception as e:
@@ -313,6 +335,81 @@ async def health_check():
             "status": "unhealthy",
             "error": str(e)
         }
+
+
+@app.get("/api/mcp/status")
+async def mcp_status():
+    """
+    Get detailed status of the persistent MCP server.
+
+    Returns information about:
+    - Server status (stopped, starting, running, error, reconnecting)
+    - Container ID if running
+    - Number of available tools
+    - Any error messages
+    - Reconnection attempts
+    """
+    from mcp_server_manager import get_mcp_status
+
+    status = await get_mcp_status()
+
+    return {
+        "status": status.status.value,
+        "container_id": status.container_id,
+        "tools_count": status.tools_count,
+        "error_message": status.error_message,
+        "reconnect_attempts": status.reconnect_attempts
+    }
+
+
+@app.get("/api/mcp/tools")
+async def mcp_tools():
+    """
+    List all available MCP tools.
+
+    Returns the list of GitHub MCP tools that can be used for
+    creating PRs, issues, and other GitHub operations.
+    """
+    from mcp_server_manager import get_mcp_server
+
+    server = await get_mcp_server()
+
+    if not server.is_running:
+        raise HTTPException(
+            status_code=503,
+            detail="MCP server is not running"
+        )
+
+    return {
+        "tools_count": len(server.available_tools),
+        "tools": server.available_tools
+    }
+
+
+@app.post("/api/mcp/reconnect")
+async def mcp_reconnect():
+    """
+    Force reconnection to the MCP server.
+
+    Use this endpoint if the MCP server connection has dropped
+    or is in an error state.
+    """
+    from mcp_server_manager import get_mcp_server
+
+    server = await get_mcp_server()
+    success = await server.reconnect()
+
+    if success:
+        return {
+            "status": "success",
+            "message": "MCP server reconnected successfully",
+            "tools_count": len(server.available_tools)
+        }
+    else:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to reconnect: {server.info.error_message}"
+        )
 
 
 @app.post("/api/repositories/update", response_model=JobResponse)
