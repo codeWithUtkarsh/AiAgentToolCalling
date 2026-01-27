@@ -123,10 +123,9 @@ def _detect_container_runtime() -> str:
                     text=True
                 )
                 if result.returncode == 0:
-                    # Return the full path if it's not standard, otherwise just the name
-                    if cmd_path != runtime and not cmd_path.startswith('/usr/'):
-                        return cmd_path
-                    return runtime
+                    # Always return the full path to avoid PATH issues
+                    # (especially important for PyCharm debugger and subprocess calls)
+                    return cmd_path
             except (subprocess.TimeoutExpired, Exception):
                 continue
 

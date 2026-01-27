@@ -67,18 +67,19 @@ class TestDetectContainerRuntime:
     @patch("github_mcp_client._find_command_path")
     @patch("github_mcp_client.subprocess.run")
     def test_detect_docker(self, mock_run, mock_find):
-        """Test detection of docker runtime."""
+        """Test detection of docker runtime - always returns full path."""
         mock_find.return_value = "/usr/bin/docker"
         mock_run.return_value = MagicMock(returncode=0)
 
         result = _detect_container_runtime()
 
-        assert result == "docker"
+        # Now always returns full path for consistency and PyCharm debugger compatibility
+        assert result == "/usr/bin/docker"
 
     @patch("github_mcp_client._find_command_path")
     @patch("github_mcp_client.subprocess.run")
     def test_detect_podman_when_docker_unavailable(self, mock_run, mock_find):
-        """Test fallback to podman when docker is unavailable."""
+        """Test fallback to podman when docker is unavailable - returns full path."""
         def find_side_effect(cmd):
             if cmd == "docker":
                 return None
@@ -91,7 +92,8 @@ class TestDetectContainerRuntime:
 
         result = _detect_container_runtime()
 
-        assert result == "podman"
+        # Now always returns full path
+        assert result == "/usr/bin/podman"
 
     @patch("github_mcp_client._find_command_path")
     def test_no_runtime_available(self, mock_find):
@@ -133,12 +135,12 @@ class TestGitHubMCPClient:
     @patch("github_mcp_client._detect_container_runtime")
     def test_init_with_token(self, mock_detect):
         """Test successful initialization with token."""
-        mock_detect.return_value = "docker"
+        mock_detect.return_value = "/usr/bin/docker"
 
         client = GitHubMCPClient(github_token="test_token")
 
         assert client.github_token == "test_token"
-        assert client.container_runtime == "docker"
+        assert client.container_runtime == "/usr/bin/docker"
 
     @patch("github_mcp_client._detect_container_runtime")
     def test_init_with_custom_runtime(self, mock_detect):
@@ -154,7 +156,7 @@ class TestGitHubMCPClient:
     @patch("github_mcp_client._detect_container_runtime")
     def test_init_with_toolsets(self, mock_detect):
         """Test initialization with toolsets configuration."""
-        mock_detect.return_value = "docker"
+        mock_detect.return_value = "/usr/bin/docker"
 
         client = GitHubMCPClient(
             github_token="test_token",
@@ -289,12 +291,12 @@ class TestServerParams:
     @patch("github_mcp_client._detect_container_runtime")
     def test_server_params_structure(self, mock_detect):
         """Test that server params are structured correctly."""
-        mock_detect.return_value = "docker"
+        mock_detect.return_value = "/usr/bin/docker"
 
         client = GitHubMCPClient(github_token="test_token")
 
-        # Verify command is container runtime
-        assert client.server_params.command == "docker"
+        # Verify command is container runtime (full path)
+        assert client.server_params.command == "/usr/bin/docker"
 
         # Verify required args
         assert "run" in client.server_params.args
@@ -306,7 +308,7 @@ class TestServerParams:
     @patch("github_mcp_client._detect_container_runtime")
     def test_token_passed_to_container(self, mock_detect):
         """Test that GitHub token is passed to container."""
-        mock_detect.return_value = "docker"
+        mock_detect.return_value = "/usr/bin/docker"
 
         client = GitHubMCPClient(github_token="my_secret_token")
 
