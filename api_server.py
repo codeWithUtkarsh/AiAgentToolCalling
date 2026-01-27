@@ -90,7 +90,7 @@ async def setup_github_mcp_docker():
             print(f"⚠️  Warning: Could not pull image: {pull_result.stderr}")
             print("Will attempt to use cached image if available")
         else:
-            print("✓ GitHub MCP server image ready")
+            print("✓ GitHub MCP server image pulled successfully")
 
         # Verify the image exists
         verify_result = subprocess.run(
@@ -102,6 +102,22 @@ async def setup_github_mcp_docker():
 
         if not verify_result.stdout.strip():
             raise RuntimeError("GitHub MCP server image not available")
+
+        print("✓ GitHub MCP server image verified")
+
+        # Test that the MCP server can start (quick validation)
+        print("🔍 Validating MCP server can start...")
+        test_result = subprocess.run(
+            ["docker", "run", "--rm", "ghcr.io/github/github-mcp-server", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if test_result.returncode == 0:
+            print("✓ MCP server validated successfully")
+        else:
+            print("⚠️  MCP server validation returned non-zero (may still work)")
 
         print("✅ GitHub MCP Docker setup complete")
 

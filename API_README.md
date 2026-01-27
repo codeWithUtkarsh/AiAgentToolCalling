@@ -48,7 +48,7 @@ A REST API service that automatically analyzes and updates repository dependenci
 
    The API will be available at `http://localhost:8000`
 
-### Option 2: Local Development
+### Option 2: Local Development (Recommended for Development)
 
 1. **Install dependencies**:
    ```bash
@@ -62,12 +62,32 @@ A REST API service that automatically analyzes and updates repository dependenci
    export GITHUB_PERSONAL_ACCESS_TOKEN=your-github-token-here
    ```
 
-3. **Ensure Docker is running**:
+3. **Start the server using the startup script**:
    ```bash
-   docker --version
+   python start_server.py
    ```
 
-4. **Start the server**:
+   This script will:
+   - Validate Python version (3.9+)
+   - Check Docker is running
+   - Verify environment variables are set
+   - Check all Python dependencies
+   - Pull the GitHub MCP Docker image
+   - Start the FastAPI server with auto-reload
+
+   **Startup script options**:
+   ```bash
+   # Custom host and port
+   python start_server.py --host 127.0.0.1 --port 8080
+
+   # Production mode (no auto-reload)
+   python start_server.py --no-reload
+
+   # Skip prerequisite checks
+   python start_server.py --skip-checks
+   ```
+
+4. **Alternative: Direct start** (without checks):
    ```bash
    python api_server.py
    ```
