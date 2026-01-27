@@ -20,7 +20,33 @@ import os
 import sys
 import argparse
 import subprocess
+import shutil
 from dotenv import load_dotenv
+
+
+def get_docker_path():
+    """Get the absolute path to the docker executable.
+
+    Using absolute paths prevents PyCharm debugger issues where it
+    tries to check if 'docker' is a Python script.
+    """
+    docker_path = shutil.which("docker")
+    if docker_path:
+        return docker_path
+
+    # Common Docker paths on different systems
+    common_paths = [
+        "/usr/local/bin/docker",
+        "/usr/bin/docker",
+        "/opt/homebrew/bin/docker",
+        "/Applications/Docker.app/Contents/Resources/bin/docker",
+    ]
+
+    for path in common_paths:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+
+    return "docker"  # Fallback to PATH lookup
 
 
 def check_python_version():
@@ -36,9 +62,11 @@ def check_python_version():
 def check_docker():
     """Verify Docker is installed and running"""
     print("\nChecking Docker...")
+    docker_cmd = get_docker_path()
+
     try:
         result = subprocess.run(
-            ["docker", "--version"],
+            [docker_cmd, "--version"],
             capture_output=True,
             text=True,
             timeout=10
@@ -48,7 +76,7 @@ def check_docker():
 
             # Check if Docker daemon is running
             info_result = subprocess.run(
-                ["docker", "info"],
+                [docker_cmd, "info"],
                 capture_output=True,
                 text=True,
                 timeout=10
@@ -137,10 +165,11 @@ def pull_mcp_image():
     """Pull the GitHub MCP Docker image"""
     print("\nPulling GitHub MCP Docker image...")
     print("  This may take a few minutes on first run...")
+    docker_cmd = get_docker_path()
 
     try:
         result = subprocess.run(
-            ["docker", "pull", "ghcr.io/github/github-mcp-server"],
+            [docker_cmd, "pull", "ghcr.io/github/github-mcp-server"],
             capture_output=False,  # Show progress
             timeout=600  # 10 minutes
         )

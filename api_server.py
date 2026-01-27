@@ -6,12 +6,38 @@ Exposes REST endpoints to analyze and update repository dependencies.
 import os
 import asyncio
 import subprocess
+import shutil
 from typing import Optional, Dict, Any
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+
+
+def get_docker_path():
+    """Get the absolute path to the docker executable.
+
+    Using absolute paths prevents PyCharm debugger issues where it
+    tries to check if 'docker' is a Python script.
+    """
+    docker_path = shutil.which("docker")
+    if docker_path:
+        return docker_path
+
+    # Common Docker paths on different systems
+    common_paths = [
+        "/usr/local/bin/docker",
+        "/usr/bin/docker",
+        "/opt/homebrew/bin/docker",
+        "/Applications/Docker.app/Contents/Resources/bin/docker",
+    ]
+
+    for path in common_paths:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+
+    return "docker"  # Fallback to PATH lookup
 
 from auto_update_dependencies import (
     create_main_orchestrator,
@@ -62,11 +88,12 @@ async def setup_github_mcp_docker():
     This ensures the image is ready when endpoints are called.
     """
     print("🐳 Setting up GitHub MCP Docker image...")
+    docker_cmd = get_docker_path()
 
     try:
         # Check if Docker is available
         result = subprocess.run(
-            ["docker", "--version"],
+            [docker_cmd, "--version"],
             capture_output=True,
             text=True,
             timeout=10
@@ -80,7 +107,7 @@ async def setup_github_mcp_docker():
         # Pull the GitHub MCP server image
         print("📥 Pulling GitHub MCP server image (this may take a moment)...")
         pull_result = subprocess.run(
-            ["docker", "pull", "ghcr.io/github/github-mcp-server"],
+            [docker_cmd, "pull", "ghcr.io/github/github-mcp-server"],
             capture_output=True,
             text=True,
             timeout=300  # 5 minutes timeout for pulling
@@ -94,7 +121,7 @@ async def setup_github_mcp_docker():
 
         # Verify the image exists
         verify_result = subprocess.run(
-            ["docker", "images", "ghcr.io/github/github-mcp-server", "-q"],
+            [docker_cmd, "images", "ghcr.io/github/github-mcp-server", "-q"],
             capture_output=True,
             text=True,
             timeout=10
@@ -108,7 +135,7 @@ async def setup_github_mcp_docker():
         # Test that the MCP server can start (quick validation)
         print("🔍 Validating MCP server can start...")
         test_result = subprocess.run(
-            ["docker", "run", "--rm", "ghcr.io/github/github-mcp-server", "--help"],
+            [docker_cmd, "run", "--rm", "ghcr.io/github/github-mcp-server", "--help"],
             capture_output=True,
             text=True,
             timeout=30
@@ -229,8 +256,9 @@ async def health_check():
     """Detailed health check including Docker availability"""
     try:
         # Check Docker
+        docker_cmd = get_docker_path()
         docker_check = subprocess.run(
-            ["docker", "--version"],
+            [docker_cmd, "--version"],
             capture_output=True,
             text=True,
             timeout=5
