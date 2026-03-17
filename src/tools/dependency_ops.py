@@ -4,6 +4,7 @@ Dependency Operations - Helper tools for updating and rolling back dependencies
 """
 
 import json
+import os
 import re
 from typing import Dict, List, Optional, Tuple
 
@@ -290,7 +291,7 @@ def parse_error_for_dependency(error_output: str, updated_packages: str) -> str:
         package_names = [p["name"] for p in packages]
 
         # Use LLM to analyze the error
-        llm = ChatAnthropic(model="claude-sonnet-4-5-20250929", temperature=0)
+        llm = ChatAnthropic(model=os.getenv("LLM_MODEL_NAME", "claude-sonnet-4-5-20250929"), temperature=0)
 
         prompt = f"""Analyze this error output from a build/test command and identify which dependency likely caused the failure.
 

@@ -840,7 +840,7 @@ IMPORTANT RULES:
 - If create_github_issue fails (e.g., permission denied on a forked repo), return:
   {"status": "issue_failed", "message": "<error>", "details": "<the issue body you tried to create>"}"""
 
-    llm = ChatAnthropic(model="claude-sonnet-4-5-20250929", temperature=0)
+    llm = ChatAnthropic(model=os.getenv("LLM_MODEL_NAME", "claude-sonnet-4-5-20250929"), temperature=0)
 
     agent_executor = create_agent(llm, tools, system_prompt=system_message)
 

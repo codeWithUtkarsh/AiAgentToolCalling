@@ -435,7 +435,7 @@ IMPORTANT RULES:
 - Your final response MUST be ONLY this JSON and nothing else:
 {"repo_path": "...", "package_manager": "...", "outdated_count": N, "outdated_packages": [...]}"""
 
-    llm = ChatAnthropic(model="claude-sonnet-4-5-20250929", temperature=0)
+    llm = ChatAnthropic(model=os.getenv("LLM_MODEL_NAME", "claude-sonnet-4-5-20250929"), temperature=0)
 
     agent_executor = create_agent(llm, tools, system_prompt=system_message)
 

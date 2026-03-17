@@ -212,7 +212,7 @@ IMPORTANT RULES:
 - Keep ALL your text responses under 50 words. No analysis, no reports, no summaries of intermediate results.
 - When calling smart_update_and_test, pass the outdated_packages as a compact JSON string — do NOT reformat or annotate them."""
 
-    llm = ChatAnthropic(model="claude-sonnet-4-5-20250929", temperature=0)
+    llm = ChatAnthropic(model=os.getenv("LLM_MODEL_NAME", "claude-sonnet-4-5-20250929"), temperature=0)
 
     agent_executor = create_agent(llm, tools, system_prompt=system_message)
 
