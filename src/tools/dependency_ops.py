@@ -5,8 +5,6 @@ Dependency Operations - Helper tools for updating and rolling back dependencies
 
 import json
 import re
-from typing import Dict, List, Optional, Tuple
-
 from dotenv import load_dotenv
 from langchain_core.tools import tool
 
@@ -165,8 +163,7 @@ def apply_all_updates(
                 "updated_content": updated_content,
                 "applied_updates": applied_updates,
                 "total_updates": len(applied_updates),
-            },
-            indent=2,
+            }
         )
 
     except Exception as e:
@@ -261,8 +258,7 @@ def rollback_major_update(
                 "updated_content": updated_content,
                 "package": package_name,
                 "rolled_back_to": target_version,
-            },
-            indent=2,
+            }
         )
 
     except Exception as e:
@@ -321,7 +317,7 @@ def parse_error_for_dependency(error_output: str, updated_packages: str) -> str:
                     "reasoning": f"Package '{suspected}' appears {matches[0][1]} time(s) in error output",
                     "error_type": error_type,
                 },
-            }, indent=2)
+            })
 
         # Heuristic 2: Check for common import/require patterns mentioning packages
         import_pattern = re.search(
@@ -339,7 +335,7 @@ def parse_error_for_dependency(error_output: str, updated_packages: str) -> str:
                             "reasoning": f"Import/require of '{mentioned}' found in error, matches package '{pkg}'",
                             "error_type": "import_error",
                         },
-                    }, indent=2)
+                    })
 
         return json.dumps({
             "status": "success",
@@ -349,7 +345,7 @@ def parse_error_for_dependency(error_output: str, updated_packages: str) -> str:
                 "reasoning": "Could not identify specific package from error output",
                 "error_type": "unknown",
             },
-        }, indent=2)
+        })
 
     except Exception as e:
         return json.dumps(
@@ -415,7 +411,7 @@ def categorize_updates(outdated_packages: str) -> str:
                         patch_updates.append(pkg)
                 else:
                     minor_updates.append(pkg)
-            except:
+            except (ValueError, IndexError):
                 minor_updates.append(pkg)
 
         return json.dumps(
@@ -429,8 +425,7 @@ def categorize_updates(outdated_packages: str) -> str:
                     "minor": len(minor_updates),
                     "patch": len(patch_updates),
                 },
-            },
-            indent=2,
+            }
         )
 
     except Exception as e:

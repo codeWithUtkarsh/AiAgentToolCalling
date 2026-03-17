@@ -12,15 +12,14 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict
 
-import requests
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_anthropic import ChatAnthropic
 from langchain_core.tools import tool
 
-from src.config import language_map as LanguageMap
+from src.config import DEFAULT_LLM_MODEL, language_map as LanguageMap
 
 # Import caching module
 from src.services.cache import get_cache
@@ -291,7 +290,7 @@ def check_outdated_dependencies(
             cached = cache.get_cached_outdated(repo_url)
             if cached:
                 cached["from_cache"] = True
-                return json.dumps(cached, indent=2)
+                return json.dumps(cached)
 
         # Run outdated command
         result = subprocess.run(
@@ -398,7 +397,7 @@ def check_outdated_dependencies(
             except Exception:
                 pass  # ignore caching errors
 
-        return json.dumps(result_data, indent=2)
+        return json.dumps(result_data)
 
     except subprocess.TimeoutExpired:
         return json.dumps({"status": "error", "message": "Outdated command timed out"})
@@ -469,7 +468,7 @@ IMPORTANT RULES:
 - Your final response MUST be ONLY this JSON and nothing else:
 {"repo_path": "...", "package_manager": "...", "outdated_count": N, "outdated_packages": [...]}"""
 
-    llm = ChatAnthropic(model=os.getenv("LLM_MODEL_NAME", "claude-sonnet-4-5-20250929"), temperature=0)
+    llm = ChatAnthropic(model=os.getenv("LLM_MODEL_NAME", DEFAULT_LLM_MODEL), temperature=0)
 
     agent_executor = create_agent(llm, tools, system_prompt=system_message)
 

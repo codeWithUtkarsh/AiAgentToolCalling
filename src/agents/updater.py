@@ -8,18 +8,17 @@ Tests updates, identifies breaking changes, and creates PRs or Issues accordingl
 
 import json
 import os
-import shutil
 import subprocess
 import sys
-import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_anthropic import ChatAnthropic
 from langchain_core.tools import tool
+
+from src.config import DEFAULT_LLM_MODEL
 
 # Load environment variables
 load_dotenv()
@@ -173,7 +172,7 @@ def detect_build_command(repo_path: str) -> str:
         _test_info["has_tests"] = True
         _test_info["exit_code"] = None
 
-        return json.dumps({"status": "success", "commands": commands}, indent=2)
+        return json.dumps({"status": "success", "commands": commands})
 
     except Exception as e:
         return json.dumps(
@@ -229,8 +228,7 @@ def run_build_test(repo_path: str, command: str, timeout: int = 300) -> str:
                 "succeeded": result.returncode == 0,
                 "stdout": stdout_tail,
                 "stderr": stderr_tail,
-            },
-            indent=2,
+            }
         )
 
     except subprocess.TimeoutExpired:
@@ -795,7 +793,7 @@ RULES:
 - Keep responses under 50 words. Final response MUST be JSON:
   {"status": "pr_created|issue_created|up_to_date|error|issue_failed", "url": "...", "message": "..."}"""
 
-    llm = ChatAnthropic(model=os.getenv("LLM_MODEL_NAME", "claude-sonnet-4-5-20250929"), temperature=0)
+    llm = ChatAnthropic(model=os.getenv("LLM_MODEL_NAME", DEFAULT_LLM_MODEL), temperature=0)
 
     agent_executor = create_agent(llm, tools, system_prompt=system_message)
 

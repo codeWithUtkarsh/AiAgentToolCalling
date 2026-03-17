@@ -14,7 +14,7 @@ import json
 import os
 import subprocess
 import sys
-from typing import Dict, List, Optional
+from typing import Optional
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
@@ -23,6 +23,7 @@ from langchain_core.tools import tool
 
 # Import sub-agents and tools
 from src.agents.analyzer import create_dependency_analyzer_agent
+from src.config import DEFAULT_LLM_MODEL
 from src.agents.updater import create_smart_updater_agent
 from src.callbacks.agent_activity import AgentActivityHandler
 
@@ -226,7 +227,7 @@ IMPORTANT RULES:
 - Keep ALL your text responses under 50 words. No analysis, no reports, no summaries of intermediate results.
 - When calling smart_update_and_test, pass the outdated_packages as a compact JSON string — do NOT reformat or annotate them."""
 
-    llm = ChatAnthropic(model=os.getenv("LLM_MODEL_NAME", "claude-sonnet-4-5-20250929"), temperature=0)
+    llm = ChatAnthropic(model=os.getenv("LLM_MODEL_NAME", DEFAULT_LLM_MODEL), temperature=0)
 
     agent_executor = create_agent(llm, tools, system_prompt=system_message)
 
