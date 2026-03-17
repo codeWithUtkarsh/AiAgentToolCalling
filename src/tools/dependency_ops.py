@@ -4,12 +4,8 @@ Dependency Operations - Helper tools for updating and rolling back dependencies
 """
 
 import json
-import os
 import re
-from typing import Dict, List, Optional, Tuple
-
 from dotenv import load_dotenv
-from langchain_anthropic import ChatAnthropic
 from langchain_core.tools import tool
 
 load_dotenv()
@@ -167,8 +163,7 @@ def apply_all_updates(
                 "updated_content": updated_content,
                 "applied_updates": applied_updates,
                 "total_updates": len(applied_updates),
-            },
-            indent=2,
+            }
         )
 
     except Exception as e:
@@ -263,8 +258,7 @@ def rollback_major_update(
                 "updated_content": updated_content,
                 "package": package_name,
                 "rolled_back_to": target_version,
-            },
-            indent=2,
+            }
         )
 
     except Exception as e:
@@ -289,71 +283,69 @@ def parse_error_for_dependency(error_output: str, updated_packages: str) -> str:
     try:
         packages = json.loads(updated_packages)
         package_names = [p["name"] for p in packages]
+        error_lower = error_output.lower()
 
-        # Use LLM to analyze the error
-        llm = ChatAnthropic(model=os.getenv("LLM_MODEL_NAME", "claude-sonnet-4-5-20250929"), temperature=0)
+        # Heuristic 1: Direct package name match in error output (most common)
+        matches = []
+        for pkg in package_names:
+            pkg_lower = pkg.lower()
+            # Count occurrences — more mentions = more likely culprit
+            count = error_lower.count(pkg_lower)
+            if count > 0:
+                matches.append((pkg, count))
 
-        prompt = f"""Analyze this error output from a build/test command and identify which dependency likely caused the failure.
+        if matches:
+            # Sort by frequency, pick the most mentioned package
+            matches.sort(key=lambda x: x[1], reverse=True)
+            suspected = matches[0][0]
 
-Updated packages:
-{json.dumps(package_names, indent=2)}
+            # Detect error type from common patterns
+            error_type = "other"
+            if re.search(r"(ImportError|ModuleNotFoundError|cannot find module)", error_output):
+                error_type = "import_error"
+            elif re.search(r"(TypeError|AttributeError|has no attribute|is not callable)", error_output):
+                error_type = "api_change"
+            elif re.search(r"(type error|type mismatch|incompatible types)", error_output, re.IGNORECASE):
+                error_type = "type_error"
 
-Error output:
-{error_output[:3000]}
-
-Instructions:
-1. Look for package names mentioned in the error
-2. Identify the root cause of the error
-3. Determine which updated package is most likely responsible
-4. Consider import errors, API changes, breaking changes, type errors, etc.
-
-Return ONLY a JSON object with this structure:
-{{
-  "suspected_package": "package-name or null if unclear",
-  "confidence": "high|medium|low",
-  "reasoning": "brief explanation",
-  "error_type": "import_error|api_change|type_error|other"
-}}"""
-
-        result = llm.invoke(prompt)
-        content = result.content
-
-        # Try to extract JSON from the response
-        json_match = re.search(r"\{.*\}", content, re.DOTALL)
-        if json_match:
-            parsed_result = json.loads(json_match.group())
-            return json.dumps(
-                {"status": "success", "analysis": parsed_result}, indent=2
-            )
-        else:
-            # Fallback: simple keyword matching
-            for package in package_names:
-                if package.lower() in error_output.lower():
-                    return json.dumps(
-                        {
-                            "status": "success",
-                            "analysis": {
-                                "suspected_package": package,
-                                "confidence": "medium",
-                                "reasoning": f"Package name '{package}' found in error output",
-                                "error_type": "unknown",
-                            },
-                        },
-                        indent=2,
-                    )
-
-            return json.dumps(
-                {
-                    "status": "success",
-                    "analysis": {
-                        "suspected_package": None,
-                        "confidence": "low",
-                        "reasoning": "Could not identify specific package from error output",
-                        "error_type": "unknown",
-                    },
+            confidence = "high" if matches[0][1] >= 3 else "medium"
+            return json.dumps({
+                "status": "success",
+                "analysis": {
+                    "suspected_package": suspected,
+                    "confidence": confidence,
+                    "reasoning": f"Package '{suspected}' appears {matches[0][1]} time(s) in error output",
+                    "error_type": error_type,
                 },
-                indent=2,
-            )
+            })
+
+        # Heuristic 2: Check for common import/require patterns mentioning packages
+        import_pattern = re.search(
+            r"(?:from|import|require\()\s*['\"]?([a-zA-Z0-9_@/.-]+)", error_output
+        )
+        if import_pattern:
+            mentioned = import_pattern.group(1).split("/")[0].lstrip("@")
+            for pkg in package_names:
+                if mentioned.lower() in pkg.lower() or pkg.lower() in mentioned.lower():
+                    return json.dumps({
+                        "status": "success",
+                        "analysis": {
+                            "suspected_package": pkg,
+                            "confidence": "medium",
+                            "reasoning": f"Import/require of '{mentioned}' found in error, matches package '{pkg}'",
+                            "error_type": "import_error",
+                        },
+                    })
+
+        return json.dumps({
+            "status": "success",
+            "analysis": {
+                "suspected_package": None,
+                "confidence": "low",
+                "reasoning": "Could not identify specific package from error output",
+                "error_type": "unknown",
+            },
+        })
 
     except Exception as e:
         return json.dumps(
@@ -419,7 +411,7 @@ def categorize_updates(outdated_packages: str) -> str:
                         patch_updates.append(pkg)
                 else:
                     minor_updates.append(pkg)
-            except:
+            except (ValueError, IndexError):
                 minor_updates.append(pkg)
 
         return json.dumps(
@@ -433,8 +425,7 @@ def categorize_updates(outdated_packages: str) -> str:
                     "minor": len(minor_updates),
                     "patch": len(patch_updates),
                 },
-            },
-            indent=2,
+            }
         )
 
     except Exception as e:

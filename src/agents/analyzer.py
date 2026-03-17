@@ -12,15 +12,14 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict
 
-import requests
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_anthropic import ChatAnthropic
 from langchain_core.tools import tool
 
-from src.config import language_map as LanguageMap
+from src.config import DEFAULT_LLM_MODEL, language_map as LanguageMap
 
 # Import caching module
 from src.services.cache import get_cache
@@ -36,6 +35,35 @@ def _get_nested(obj, path, default="N/A"):
         if obj is None:
             return default
     return obj
+
+
+def _parse_text_outdated(stdout: str, package_manager: str = "") -> list:
+    """Parse text-format outdated output into structured list locally (no LLM needed)."""
+    results = []
+    lines = stdout.strip().splitlines()
+
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith(("-", "=", "Package", "Name", "#")):
+            continue
+
+        # pip: "package  current  latest  type"
+        # npm (text): "package  current  wanted  latest  location"
+        # gem: "package (newest N, installed M)"
+        parts = line.split()
+        if len(parts) >= 3:
+            name = parts[0]
+            # Skip table separator rows
+            if all(c in "-|+" for c in name):
+                continue
+            current = parts[1].strip("()")
+            latest = parts[2].strip("()")
+            # npm text has 4+ columns: name current wanted latest
+            if len(parts) >= 4 and package_manager in ("npm", "yarn", "pnpm"):
+                latest = parts[3]
+            results.append({"name": name, "current": current, "latest": latest})
+
+    return results
 
 
 # Load environment variables from .env file
@@ -256,8 +284,13 @@ def check_outdated_dependencies(
     os.chdir(repo_path)
 
     try:
-        # Check cache if repo_url provided
+        # Check cache first if repo_url provided
         cache = get_cache()
+        if repo_url:
+            cached = cache.get_cached_outdated(repo_url)
+            if cached:
+                cached["from_cache"] = True
+                return json.dumps(cached)
 
         # Run outdated command
         result = subprocess.run(
@@ -342,11 +375,11 @@ def check_outdated_dependencies(
                             }
                         )
 
-                else:  # "text" format — pass raw output for LLM to interpret
-                    outdated_list.append({"raw_output": stdout})
+                else:  # "text" format — parse locally instead of sending to LLM
+                    outdated_list.extend(_parse_text_outdated(stdout, package_manager))
 
             except json.JSONDecodeError:
-                outdated_list.append({"raw_output": stdout})
+                outdated_list.extend(_parse_text_outdated(stdout, package_manager))
 
         result_data = {
             "status": "success",
@@ -364,7 +397,7 @@ def check_outdated_dependencies(
             except Exception:
                 pass  # ignore caching errors
 
-        return json.dumps(result_data, indent=2)
+        return json.dumps(result_data)
 
     except subprocess.TimeoutExpired:
         return json.dumps({"status": "error", "message": "Outdated command timed out"})
@@ -435,7 +468,7 @@ IMPORTANT RULES:
 - Your final response MUST be ONLY this JSON and nothing else:
 {"repo_path": "...", "package_manager": "...", "outdated_count": N, "outdated_packages": [...]}"""
 
-    llm = ChatAnthropic(model=os.getenv("LLM_MODEL_NAME", "claude-sonnet-4-5-20250929"), temperature=0)
+    llm = ChatAnthropic(model=os.getenv("LLM_MODEL_NAME", DEFAULT_LLM_MODEL), temperature=0)
 
     agent_executor = create_agent(llm, tools, system_prompt=system_message)
 

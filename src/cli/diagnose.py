@@ -15,7 +15,7 @@ import json
 import os
 import subprocess
 import sys
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 
 class Colors:
@@ -292,7 +292,7 @@ async def test_mcp_tool_call(token: str) -> bool:
                     if isinstance(user_data, dict):
                         print(f"   Authenticated as: {user_data.get('login', 'N/A')}")
                         print(f"   User type: {user_data.get('type', 'N/A')}")
-                except:
+                except (json.JSONDecodeError, KeyError, TypeError):
                     pass
 
                 return True
