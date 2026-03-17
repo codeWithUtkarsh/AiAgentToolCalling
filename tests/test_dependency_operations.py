@@ -496,18 +496,11 @@ class TestGetLatestVersionForMajor:
 class TestParseErrorForDependency:
     """Test cases for parse_error_for_dependency function."""
 
-    @patch("src.tools.dependency_ops.ChatAnthropic")
-    def test_parse_error_identifies_package(self, mock_llm):
-        """Test that error parsing identifies problematic package."""
-        mock_instance = MagicMock()
-        mock_instance.invoke.return_value = MagicMock(
-            content='{"suspected_package": "react", "confidence": "high", "reasoning": "Import error for react", "error_type": "import_error"}'
-        )
-        mock_llm.return_value = mock_instance
-
+    def test_parse_error_identifies_package(self):
+        """Test that error parsing identifies problematic package via heuristics."""
         from src.tools.dependency_ops import parse_error_for_dependency
 
-        error_output = "Error: Cannot find module 'react'"
+        error_output = "Error: Cannot find module 'react'\nImportError: react is not installed"
         updated_packages = json.dumps(
             [
                 {"name": "react", "old": "17.0.0", "new": "18.0.0"},

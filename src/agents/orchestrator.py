@@ -133,7 +133,21 @@ Return the final PR URL or Issue URL.""",
 
         final_message = result["messages"][-1]
 
-        return json.dumps({"status": "success", "result": final_message.content})
+        # Extract only essential fields to avoid sending huge payloads to orchestrator LLM
+        try:
+            parsed = json.loads(final_message.content)
+            compact = {
+                "status": parsed.get("status", "success"),
+                "url": parsed.get("url", ""),
+                "message": parsed.get("message", ""),
+            }
+            return json.dumps(compact)
+        except (json.JSONDecodeError, TypeError):
+            # If not JSON, truncate to avoid bloating the orchestrator context
+            content = final_message.content
+            if len(content) > 500:
+                content = content[:500]
+            return json.dumps({"status": "success", "result": content})
 
     except Exception as e:
         return json.dumps(

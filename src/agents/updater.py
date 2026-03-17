@@ -204,8 +204,8 @@ def run_build_test(repo_path: str, command: str, timeout: int = 300) -> str:
 
         os.chdir(original_dir)
 
-        stdout_tail = result.stdout[-5000:] if result.stdout else ""
-        stderr_tail = result.stderr[-5000:] if result.stderr else ""
+        stdout_tail = result.stdout[-2000:] if result.stdout else ""
+        stderr_tail = result.stderr[-2000:] if result.stderr else ""
 
         # Capture logs for build/test commands to include in PR body
         combined = (stdout_tail + "\n" + stderr_tail).strip()
@@ -594,8 +594,8 @@ def create_github_pr(
 
         # Append build/test logs to PR body automatically
         log_section = "\n\n---\n\nAll updates have been tested and verified:\n"
-        build_log = _build_test_logs.get("build")
-        test_log = _build_test_logs.get("test")
+        build_log = _build_test_logs.get("build", "")[-1000:] if _build_test_logs.get("build") else ""
+        test_log = _build_test_logs.get("test", "")[-1000:] if _build_test_logs.get("test") else ""
         has_tests = _test_info.get("has_tests", True)
         has_test_command = _detected_commands.get("test") is not None
         if build_log:
@@ -763,82 +763,37 @@ def create_smart_updater_agent():
         get_latest_version_for_major,
     ]
 
-    system_message = """You are a dependency update agent. Follow this EXACT workflow. Do NOT deviate or add extra steps.
+    system_message = """You are a dependency update agent. Follow this EXACT workflow.
 
-STEP 1: DETECT BUILD COMMANDS
-- Call detect_build_command with the repo_path.
-- Note the install, build, and test commands.
+STEP 1: Call detect_build_command with repo_path.
 
 STEP 2: UPDATE DEPENDENCIES
-- For npm/yarn/pnpm: Use apply_all_updates with the dependency file content and outdated packages, then write_dependency_file.
-- For pip/poetry: Use apply_all_updates, then write_dependency_file.
-- For go: Build a SINGLE command with ALL outdated packages: "go get pkg1@version1 pkg2@version2 ... && go mod tidy" and run it using run_build_test. This updates only the specific packages identified as outdated, not the entire dependency tree.
-- For cargo: Run "cargo update" using run_build_test.
-- For other package managers: Use the appropriate bulk update command via run_build_test.
+- npm/yarn/pnpm/pip/poetry: apply_all_updates → write_dependency_file.
+- go: run_build_test with "go get pkg1@v1 pkg2@v2 ... && go mod tidy".
+- cargo: run_build_test with "cargo update".
 
 STEP 3: BUILD AND TEST
-- Run the build command (from detect_build_command) using run_build_test. The build command installs dependencies and verifies they resolve correctly.
-- Run the test command (from detect_build_command) using run_build_test. If no test command, skip.
-- run_build_test MUST ONLY be used for: install commands, build commands, test commands, and "go get" commands.
-- NEVER use run_build_test for: cat, grep, ls, pip list, pip freeze, go list, or any other exploratory/inspection command.
+- Run build command via run_build_test. Then run test command (skip if none).
+- run_build_test is ONLY for: install, build, test, and "go get" commands. NEVER for cat/grep/ls/pip list/go list or any inspection command.
 
 STEP 4: HANDLE RESULTS
-- IF build and tests PASS:
-  1. git_operations: create_branch (do NOT pass branch_name — the tool generates it automatically as "OrteliusAiBot/dep-<datetime>")
-  2. git_operations: push_files with the SAME branch_name returned by create_branch and a commit message (auto-detects repo, reads modified files, pushes via GitHub MCP)
-     - If push_files returns status="no_changes", skip PR and return "All dependencies are already up to date."
-  3. create_github_pr with repo_name (owner/repo format), branch_name, title, and body.
-     The PR body MUST use this exact markdown format:
+- BUILD+TESTS PASS:
+  1. git_operations: create_branch (no branch_name arg — auto-generated)
+  2. git_operations: push_files with returned branch_name + commit message. If status="no_changes", return up_to_date.
+  3. create_github_pr with repo_name, branch_name, title, body. Body format:
+     ## This PR contains updated dependencies:\n\n| Package | Type | Update | Change |\n|---------|------|--------|--------|\n| name | pm | major/minor/patch | `old` → `new` |
+     Build/test logs are auto-appended. Do NOT add them.
+  4. Return PR URL.
 
-     ## This PR contains updated dependencies:
+- BUILD FAILS: create_github_issue immediately (no rollbacks). Return Issue URL.
 
-     | Package | Type | Update | Change |
-     |---------|------|--------|--------|
-     | package-name | type | update-type | `old` → `new` |
+- TESTS FAIL: parse_error_for_dependency → rollback (go: "go get pkg@old && go mod tidy"; others: rollback_major_update + write_dependency_file) → re-run STEP 3. Max 3 retries, then create_github_issue.
 
-     Where:
-     - Type is: npm, pip, go, cargo, etc.
-     - Update is: major, minor, patch
-
-     NOTE: Build/test logs are automatically appended to the PR body by create_github_pr. Do NOT add them yourself.
-
-  4. Return the PR URL.
-
-- IF BUILD FAILS (exit_code != 0 from the build command):
-  Do NOT attempt rollbacks. The build is broken — create an issue immediately.
-  1. create_github_issue with title "Dependency Update: Build Failure" and body containing:
-     - The list of packages that were updated (name, old version, new version)
-     - The full build error output (stderr)
-     - The build command that was run
-  2. Return the Issue URL.
-
-- IF TESTS FAIL (build passed but test command exit_code != 0):
-  1. Use parse_error_for_dependency to identify the breaking package.
-  2. Rollback that package:
-     - For go: Run "go get <package>@<old_version> && go mod tidy" using run_build_test.
-     - For other languages: Use rollback_major_update + write_dependency_file.
-  3. Re-run build and test (go back to STEP 3).
-  4. Repeat up to 3 times max.
-
-- IF still failing after 3 rollback attempts:
-  1. create_github_issue describing what failed and the error output.
-  2. Return the Issue URL.
-
-IMPORTANT RULES:
-- Do NOT call get_remote_url — create_branch and push_files auto-detect the repo.
-- Do NOT use "commit" or "push" operations. Use "push_files" instead.
-- Do NOT run exploratory or inspection commands via run_build_test. FORBIDDEN commands include: cat, grep, ls, head, tail, pip list, pip freeze, pip show, go list, npm ls, cargo tree, or any command that reads/inspects files or package state.
-- Do NOT call categorize_updates — the orchestrator already did that.
-- Do NOT re-read dependency files to inspect them. Trust the tool outputs.
-- Do NOT create lock files (requirements-lock.txt, etc.). Only modify the dependency file identified by the package manager.
-- Keep ALL your text responses under 50 words. Just state what you're doing next or the final result.
-- Your FINAL response MUST be a JSON object with the result:
-  {"status": "pr_created", "url": "<PR_URL>"} or
-  {"status": "issue_created", "url": "<ISSUE_URL>"} or
-  {"status": "up_to_date", "message": "All dependencies are already up to date."} or
-  {"status": "error", "message": "<error details>"}
-- If create_github_issue fails (e.g., permission denied on a forked repo), return:
-  {"status": "issue_failed", "message": "<error>", "details": "<the issue body you tried to create>"}"""
+RULES:
+- Do NOT call get_remote_url, categorize_updates, or run inspection commands.
+- Use "push_files" not "commit"/"push". Do NOT create lock files.
+- Keep responses under 50 words. Final response MUST be JSON:
+  {"status": "pr_created|issue_created|up_to_date|error|issue_failed", "url": "...", "message": "..."}"""
 
     llm = ChatAnthropic(model=os.getenv("LLM_MODEL_NAME", "claude-sonnet-4-5-20250929"), temperature=0)
 
