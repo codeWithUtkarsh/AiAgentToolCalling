@@ -9,7 +9,6 @@ import re
 from typing import Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
-from langchain_anthropic import ChatAnthropic
 from langchain_core.tools import tool
 
 load_dotenv()
@@ -277,7 +276,8 @@ def rollback_major_update(
 def parse_error_for_dependency(error_output: str, updated_packages: str) -> str:
     """
     Analyze error output to identify which dependency likely caused the failure.
-    Uses AI to intelligently parse error messages.
+    Uses Anthropic SDK's structured outputs (messages.parse) for reliable,
+    type-safe error analysis instead of regex-extracting JSON from free text.
 
     Args:
         error_output: Error output from build/test command
@@ -290,8 +290,8 @@ def parse_error_for_dependency(error_output: str, updated_packages: str) -> str:
         packages = json.loads(updated_packages)
         package_names = [p["name"] for p in packages]
 
-        # Use LLM to analyze the error
-        llm = ChatAnthropic(model=os.getenv("LLM_MODEL_NAME", "claude-sonnet-4-5-20250929"), temperature=0)
+        from src.models.parsing import parse_structured
+        from src.models.schemas import ErrorAnalysis
 
         prompt = f"""Analyze this error output from a build/test command and identify which dependency likely caused the failure.
 
@@ -305,28 +305,19 @@ Instructions:
 1. Look for package names mentioned in the error
 2. Identify the root cause of the error
 3. Determine which updated package is most likely responsible
-4. Consider import errors, API changes, breaking changes, type errors, etc.
+4. Consider import errors, API changes, breaking changes, type errors, etc."""
 
-Return ONLY a JSON object with this structure:
-{{
-  "suspected_package": "package-name or null if unclear",
-  "confidence": "high|medium|low",
-  "reasoning": "brief explanation",
-  "error_type": "import_error|api_change|type_error|other"
-}}"""
-
-        result = llm.invoke(prompt)
-        content = result.content
-
-        # Try to extract JSON from the response
-        json_match = re.search(r"\{.*\}", content, re.DOTALL)
-        if json_match:
-            parsed_result = json.loads(json_match.group())
+        try:
+            analysis = parse_structured(ErrorAnalysis, prompt)
             return json.dumps(
-                {"status": "success", "analysis": parsed_result}, indent=2
+                {
+                    "status": "success",
+                    "analysis": analysis.model_dump(),
+                },
+                indent=2,
             )
-        else:
-            # Fallback: simple keyword matching
+        except Exception:
+            # Fallback: simple keyword matching if structured parsing fails
             for package in package_names:
                 if package.lower() in error_output.lower():
                     return json.dumps(
@@ -336,7 +327,7 @@ Return ONLY a JSON object with this structure:
                                 "suspected_package": package,
                                 "confidence": "medium",
                                 "reasoning": f"Package name '{package}' found in error output",
-                                "error_type": "unknown",
+                                "error_type": "other",
                             },
                         },
                         indent=2,
@@ -349,7 +340,7 @@ Return ONLY a JSON object with this structure:
                         "suspected_package": None,
                         "confidence": "low",
                         "reasoning": "Could not identify specific package from error output",
-                        "error_type": "unknown",
+                        "error_type": "other",
                     },
                 },
                 indent=2,

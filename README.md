@@ -28,6 +28,10 @@ Detects and updates dependencies for:
 - **Error Analysis**: AI-powered parsing of error messages to identify culprits
 - **Iterative Rollback**: Tries to salvage as many updates as possible
 - **Version Categorization**: Categorizes updates as major/minor/patch
+- **Dry-Run Mode**: Preview what would be updated without making any changes
+- **Structured Outputs**: Type-safe Pydantic models for all agent responses (inspired by Anthropic SDK patterns)
+- **Retry with Backoff**: Resilient API calls with exponential backoff for rate limits
+- **Streaming Support**: Real-time progress feedback during long-running operations
 - **Comprehensive Reporting**: Detailed PR descriptions with what was updated and why
 
 ## 🏗️ Architecture
@@ -331,6 +335,20 @@ python auto_update_dependencies.py expressjs/express
 4. 🔙 If tests fail: identifies problematic packages and rolls back major updates
 5. ✅ Creates a Pull Request if successful
 6. 🔴 Creates an Issue if updates can't be applied safely
+
+### Dry-Run Mode (Preview Only)
+
+Preview what would be updated without making any changes:
+
+```bash
+python -m src.agents.orchestrator owner/repo --dry-run
+```
+
+This will:
+- Analyze the repository for outdated dependencies
+- Categorize updates as major/minor/patch with risk levels
+- Show a detailed report without creating branches, PRs, or Issues
+- Display estimated API cost for the analysis
 
 **Prerequisites:**
 - Docker installed and running: `docker --version`

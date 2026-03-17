@@ -219,6 +219,115 @@ IMPORTANT RULES:
     return agent_executor
 
 
+def run_dry_run(repo_url: str) -> None:
+    """
+    Dry-run mode: analyze dependencies and show what would be updated
+    without actually making any changes, creating PRs, or Issues.
+
+    This lets users preview the dependency report and risk assessment
+    before committing to a full update run.
+    """
+    from src.models.schemas import CategorizedUpdates, OutdatedPackage, UpdateType
+
+    print("=" * 80)
+    print("  DRY RUN — Dependency Analysis Preview")
+    print("=" * 80)
+    print()
+    print(f"Repository: {repo_url}")
+    print()
+
+    # Check prerequisites (only need Anthropic key for analysis)
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    if not anthropic_key:
+        print("ANTHROPIC_API_KEY not set.")
+        sys.exit(1)
+
+    print("Analyzing repository...")
+    print()
+
+    orchestrator_handler = AgentActivityHandler("orchestrator")
+
+    analyzer_agent = create_dependency_analyzer_agent()
+    handler = AgentActivityHandler("analyzer")
+    orchestrator_handler.add_child_handler(handler)
+
+    result = analyzer_agent.invoke(
+        {
+            "messages": [
+                (
+                    "user",
+                    f"Analyze this repository for outdated dependencies and return a structured JSON report: {repo_url}",
+                )
+            ]
+        },
+        config={"callbacks": [handler]},
+    )
+
+    final_message = result["messages"][-1]
+
+    # Try to parse the result
+    try:
+        analysis = json.loads(final_message.content)
+    except (json.JSONDecodeError, TypeError):
+        print(f"Analysis result:\n{final_message.content}")
+        return
+
+    packages = analysis.get("outdated_packages", [])
+    if not packages:
+        print("✅ All dependencies are up to date!")
+        return
+
+    # Categorize updates
+    major, minor, patch = [], [], []
+    for pkg in packages:
+        current = pkg.get("current", "0.0.0").lstrip("^~>=v")
+        latest = pkg.get("latest", "0.0.0").lstrip("^~>=v")
+        try:
+            curr_parts = current.split(".")
+            lat_parts = latest.split(".")
+            if curr_parts[0] != lat_parts[0]:
+                major.append(pkg)
+            elif len(curr_parts) >= 2 and len(lat_parts) >= 2 and curr_parts[1] != lat_parts[1]:
+                minor.append(pkg)
+            else:
+                patch.append(pkg)
+        except (IndexError, ValueError):
+            minor.append(pkg)
+
+    print(f"📦 Found {len(packages)} outdated dependencies:")
+    print(f"   🔴 {len(major)} major updates (breaking changes possible)")
+    print(f"   🟡 {len(minor)} minor updates")
+    print(f"   🟢 {len(patch)} patch updates")
+    print()
+
+    if major:
+        print("🔴 MAJOR UPDATES (highest risk):")
+        for pkg in major:
+            print(f"   {pkg['name']}: {pkg.get('current', '?')} → {pkg.get('latest', '?')}")
+        print()
+
+    if minor:
+        print("🟡 MINOR UPDATES:")
+        for pkg in minor:
+            print(f"   {pkg['name']}: {pkg.get('current', '?')} → {pkg.get('latest', '?')}")
+        print()
+
+    if patch:
+        print("🟢 PATCH UPDATES:")
+        for pkg in patch:
+            print(f"   {pkg['name']}: {pkg.get('current', '?')} → {pkg.get('latest', '?')}")
+        print()
+
+    print("─" * 80)
+    print("To apply these updates, run without --dry-run:")
+    print(f"  dep-updater {repo_url}")
+    print()
+
+    # Print cost summary
+    usage = orchestrator_handler.get_usage_summary()
+    print(f"  Dry-run cost: ${usage['estimated_cost_usd']:.4f}")
+
+
 def main():
     """
     Main entry point for the automated dependency update system.
@@ -229,11 +338,15 @@ Auto Update Dependencies Tool
 
 Intelligently updates dependencies with automated testing and rollback.
 
-Usage: python -m src.agents.orchestrator <repository>
+Usage: python -m src.agents.orchestrator <repository> [--dry-run]
 
 Examples:
   python -m src.agents.orchestrator https://github.com/owner/repo
   python -m src.agents.orchestrator owner/repo
+  python -m src.agents.orchestrator owner/repo --dry-run
+
+Options:
+  --dry-run    Preview what would be updated without making changes
 
 What it does:
   1. Analyzes your repo for outdated dependencies
@@ -251,7 +364,10 @@ Prerequisites:
 """)
         sys.exit(1)
 
-    repo_input = sys.argv[1]
+    # Parse arguments
+    dry_run = "--dry-run" in sys.argv
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    repo_input = args[0]
 
     # Convert owner/repo to full URL if needed
     if not repo_input.startswith("http"):
@@ -261,6 +377,10 @@ Prerequisites:
         repo_url = repo_input
         parts = repo_url.rstrip("/").split("/")
         repo_name = f"{parts[-2]}/{parts[-1]}"
+
+    if dry_run:
+        run_dry_run(repo_url)
+        return
 
     print("=" * 80)
     print("  Automated Dependency Update System")
